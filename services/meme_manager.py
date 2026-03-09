@@ -3,21 +3,27 @@ from pathlib import Path
 from typing import Optional
 
 from ..constants import SUPPORTED_IMAGE_SUFFIXES
+from ..models import MemeToolResult
 from ..utils import (
     get_allowed_image_roots,
     is_path_within_roots,
     normalize_category_name,
     resolve_user_path,
 )
+from .dedup import DHashDedupService
 
 
 class MemeManager:
     def __init__(self, storage):
         self.storage = storage
         self.write_lock = Lock()
+        self.dedup = DHashDedupService(storage=self.storage)
         self.allowed_image_roots = get_allowed_image_roots(
             extra_roots=(self.storage.paths.plugin_dir, self.storage.paths.data_dir)
         )
+
+    def initialize(self) -> None:
+        self.dedup.initialize()
 
     async def steal_meme(
         self,
@@ -50,6 +56,21 @@ class MemeManager:
         overwrite_description = bool(description)
 
         async with self.write_lock:
+            duplicate = self.dedup.find_similar_duplicate(raw_path)
+            if duplicate is not None:
+                return MemeToolResult(
+                    ok=True,
+                    saved=False,
+                    category=final_category,
+                    description=final_description,
+                    message="这个表情包已经偷过了",
+                    reason="这个表情包已经偷过了",
+                    duplicate=True,
+                    duplicate_type="similar",
+                    matched_file=str(duplicate.matched_file),
+                    distance=duplicate.distance,
+                ).to_message()
+
             result = self.storage.save_meme(
                 source_file=Path(raw_path),
                 category=final_category,
@@ -58,5 +79,6 @@ class MemeManager:
                 save_name=save_name,
                 overwrite_description=overwrite_description,
             )
+            self.dedup.register_file(result.saved_file)
 
-        return result.to_message()
+        return result.to_tool_result().to_message()

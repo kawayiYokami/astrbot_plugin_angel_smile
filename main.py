@@ -46,6 +46,7 @@ class AngelSmilePlugin(Star):
 
     async def initialize(self):
         self.storage.initialize()
+        self.manager.initialize()
         logger.info("AngelSmile: 插件已初始化")
 
     async def terminate(self):

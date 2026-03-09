@@ -114,6 +114,15 @@ class MemeStorage:
             return None
         return str(random.choice(image_files))
 
+    def iter_all_sticker_files(self) -> list[Path]:
+        if not self.paths.stickers_dir.exists():
+            return []
+        return [
+            path
+            for path in self.paths.stickers_dir.rglob("*")
+            if path.is_file() and path.suffix.lower() in SUPPORTED_IMAGE_SUFFIXES
+        ]
+
     def save_meme(
         self,
         source_file: Path,
