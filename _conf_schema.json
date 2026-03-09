@@ -1,0 +1,8 @@
+{
+  "max_stickers_per_message": {
+    "description": "每条消息最多使用的贴纸数量",
+    "type": "int",
+    "hint": "建议设置为 1-3，避免消息中过多图片。",
+    "default": 1
+  }
+}
