@@ -12,6 +12,7 @@ class PluginPaths:
     default_dir: Path
 
 
+
 @dataclass(slots=True)
 class MemeSaveResult:
     category: str

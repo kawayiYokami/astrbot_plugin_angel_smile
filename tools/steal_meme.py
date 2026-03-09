@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Protocol
 
 from astrbot.api import FunctionTool
 from astrbot.api.event import AstrMessageEvent
@@ -7,9 +7,19 @@ from astrbot.api.event import AstrMessageEvent
 from ..constants import STEAL_TOOL_NAME
 
 
+class MemeManagerProtocol(Protocol):
+    async def steal_meme(
+        self,
+        image_path: str,
+        category: str,
+        description: Optional[str] = None,
+        save_name: Optional[str] = None,
+    ) -> str: ...
+
+
 @dataclass
 class StealMemeTool(FunctionTool):
-    manager: object = field(repr=False, default=None)
+    manager: MemeManagerProtocol | None = field(repr=False, default=None)
     name: str = STEAL_TOOL_NAME
     description: str = (
         "接收本地图片路径，并按给定 category 保存到天使之笑插件目录。"
@@ -32,12 +42,14 @@ class StealMemeTool(FunctionTool):
         self,
         event: AstrMessageEvent,
         image_path: str,
-        category: Optional[str] = None,
+        category: str,
         description: Optional[str] = None,
         save_name: Optional[str] = None,
     ) -> str:
+        _ = event
+        if self.manager is None:
+            raise RuntimeError("StealMemeTool manager is not initialized")
         return await self.manager.steal_meme(
-            event=event,
             image_path=image_path,
             category=category,
             description=description,

@@ -3,7 +3,7 @@ import random
 import shutil
 import time
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from astrbot.api import logger
 
@@ -40,23 +40,43 @@ class MemeStorage:
     def load_stickers_data(self) -> Dict[str, str]:
         try:
             if self.paths.stickers_data_file.exists():
-                self.stickers_data = json.loads(self.paths.stickers_data_file.read_text(encoding="utf-8"))
+                raw_data = json.loads(
+                    self.paths.stickers_data_file.read_text(encoding="utf-8")
+                )
+                self.stickers_data = self._normalize_stickers_data(raw_data)
             else:
                 self.stickers_data = {}
             logger.info(f"AngelSmile: 已加载 {len(self.stickers_data)} 个表情分类")
         except json.JSONDecodeError as exc:
             logger.error(f"AngelSmile: 表情数据文件格式错误: {exc}")
             self.stickers_data = {}
-        except Exception as exc:
+        except (OSError, TypeError, ValueError) as exc:
             logger.error(f"AngelSmile: 加载表情数据失败: {exc}", exc_info=True)
             self.stickers_data = {}
         return self.stickers_data
 
+    def _normalize_stickers_data(self, raw_data: Any) -> Dict[str, str]:
+        if raw_data is None:
+            return {}
+        if not isinstance(raw_data, dict):
+            raise TypeError("memes_data.json 顶层必须是对象")
+
+        normalized: Dict[str, str] = {}
+        for raw_key, raw_value in raw_data.items():
+            if not isinstance(raw_key, str):
+                raise TypeError("memes_data.json 的分类名必须是字符串")
+            normalized[raw_key] = str(raw_value or "").strip()
+        return normalized
+
     def persist(self) -> None:
-        self.paths.stickers_data_file.write_text(
-            json.dumps(self.stickers_data, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        try:
+            self.paths.stickers_data_file.write_text(
+                json.dumps(self.stickers_data, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            logger.error(f"AngelSmile: 持久化表情数据失败: {exc}", exc_info=True)
+            raise
 
     def has_sticker_assets(self, category: str) -> bool:
         sticker_dir = self.paths.stickers_dir / category
@@ -76,6 +96,12 @@ class MemeStorage:
 
     def get_catalog_stickers_data(self) -> Dict[str, str]:
         return dict(self.stickers_data)
+
+    def get_catalog_description(self, category: str) -> Optional[str]:
+        description = self.stickers_data.get(category)
+        if description is None:
+            return None
+        return str(description).strip()
 
     def get_random_sticker_path(self, category: str) -> Optional[str]:
         sticker_dir = self.paths.stickers_dir / category
@@ -113,7 +139,7 @@ class MemeStorage:
 
         return MemeSaveResult(
             category=category,
-            description=self.stickers_data.get(category, description),
+            description=self.get_catalog_description(category) or description,
             saved_file=target_file,
             reason=reason,
         )

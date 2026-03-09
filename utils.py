@@ -1,9 +1,10 @@
-import json
 import os
 import re
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
+
+from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 
 from .constants import DEFAULT_CATEGORY
 
@@ -33,25 +34,20 @@ def resolve_user_path(raw_path: str) -> Path:
     return Path(os.path.expandvars(os.path.expanduser(raw_path))).resolve()
 
 
-def extract_json_object(text: str) -> Optional[dict]:
-    if not text:
-        return None
-    stripped = text.strip()
-    try:
-        data = json.loads(stripped)
-        return data if isinstance(data, dict) else None
-    except Exception:
-        pass
-
-    match = re.search(r"\{[\s\S]*\}", stripped)
-    if not match:
-        return None
-    try:
-        data = json.loads(match.group(0))
-        return data if isinstance(data, dict) else None
-    except Exception:
-        return None
+def get_allowed_image_roots(extra_roots: Optional[Iterable[Path]] = None) -> tuple[Path, ...]:
+    roots = {
+        Path(get_astrbot_data_path()).resolve(),
+        Path.cwd().resolve(),
+    }
+    if extra_roots:
+        roots.update(path.resolve() for path in extra_roots)
+    return tuple(sorted(roots))
 
 
-def remove_sticker_tags(text: str) -> str:
-    return re.sub(r":([a-zA-Z0-9_\-\u4e00-\u9fff]+):", "", text).strip()
+def is_path_within_roots(target_path: Path, roots: Iterable[Path]) -> bool:
+    resolved_target = target_path.resolve()
+    for root in roots:
+        resolved_root = root.resolve()
+        if resolved_target == resolved_root or resolved_root in resolved_target.parents:
+            return True
+    return False

@@ -2,10 +2,9 @@ from pathlib import Path
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, filter
-from astrbot.api.star import Context, Star, register
+from astrbot.api.star import Context, Star, StarTools, register
 from astrbot.core.message.components import Plain
-from astrbot.core.provider.entities import LLMResponse, ProviderRequest
-from astrbot.core.star.star_tools import StarTools
+from astrbot.core.provider.entities import ProviderRequest
 
 from .constants import STEAL_TOOL_NAME
 from .models import PluginPaths
@@ -41,10 +40,7 @@ class AngelSmilePlugin(Star):
         self.renderer = StickerRenderer(storage=self.storage)
         self.manager = MemeManager(storage=self.storage)
 
-        try:
-            self.context.provider_manager.llm_tools.remove_func(STEAL_TOOL_NAME)
-        except Exception:
-            pass
+        self.context.provider_manager.llm_tools.remove_func(STEAL_TOOL_NAME)
         self.steal_meme_tool = StealMemeTool(manager=self.manager)
         self.context.add_llm_tools(self.steal_meme_tool)
 
@@ -53,14 +49,12 @@ class AngelSmilePlugin(Star):
         logger.info("AngelSmile: 插件已初始化")
 
     async def terminate(self):
-        try:
-            self.context.provider_manager.llm_tools.remove_func(self.steal_meme_tool.name)
-        except Exception as exc:
-            logger.warning(f"AngelSmile: 注销工具失败: {exc}")
+        self.context.provider_manager.llm_tools.remove_func(self.steal_meme_tool.name)
         logger.info("AngelSmile: 插件已停止")
 
     @filter.on_llm_request()
     async def on_llm_req(self, event: AstrMessageEvent, req: ProviderRequest):
+        _ = event
         prompt_catalog = self.renderer.build_prompt_catalog()
         if not prompt_catalog.strip():
             return
@@ -82,11 +76,7 @@ class AngelSmilePlugin(Star):
 {prompt_catalog}
 </表情包目录>
 """
-        req.system_prompt += f"\n\n{instruction_prompt}"
-
-    @filter.on_llm_response()
-    async def on_llm_resp(self, event: AstrMessageEvent, resp: LLMResponse):
-        event.set_extra("resp", resp)
+        req.system_prompt = f"{req.system_prompt or ''}\n\n{instruction_prompt}"
 
     @filter.on_decorating_result()
     async def on_decorating_result(self, event: AstrMessageEvent):
@@ -101,4 +91,5 @@ class AngelSmilePlugin(Star):
 
     @filter.after_message_sent()
     async def after_message_sent(self, event: AstrMessageEvent):
+        _ = event
         return None
