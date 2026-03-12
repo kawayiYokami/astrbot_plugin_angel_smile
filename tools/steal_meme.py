@@ -22,14 +22,17 @@ class StealMemeTool(FunctionTool):
     manager: MemeManagerProtocol | None = field(repr=False, default=None)
     name: str = STEAL_TOOL_NAME
     description: str = (
-        "接收本地图片路径，并按给定 category 保存到天使之笑插件目录。"
+        "接收图片引用（本地路径、file:/// 或 http(s) URL），并按给定 category 保存到天使之笑插件目录。"
         "调用前应先根据分类目录自行判断分类。"
     )
     parameters: dict = field(
         default_factory=lambda: {
             "type": "object",
             "properties": {
-                "image_path": {"type": "string", "description": "本地图片绝对路径或相对路径。"},
+                "image_path": {
+                    "type": "string",
+                    "description": "图片引用：本地绝对路径、相对路径、file:/// 或 http(s) URL。"
+                },
                 "category": {"type": "string", "description": "必填，要保存到的表情分类名。"},
                 "description": {"type": "string", "description": "可选，该分类的中文用途描述；仅在新建分类时会写入。"},
                 "save_name": {"type": "string", "description": "可选，保存后的文件名，不含路径。"},
