@@ -9,7 +9,7 @@ from astrbot.api import logger
 
 from ..constants import SUPPORTED_IMAGE_SUFFIXES
 from ..models import MemeSaveResult, PluginPaths
-from ..utils import safe_filename
+from ..utils import get_image_extension, safe_filename
 
 
 class MemeStorage:
@@ -123,6 +123,22 @@ class MemeStorage:
             if path.is_file() and path.suffix.lower() in SUPPORTED_IMAGE_SUFFIXES
         ]
 
+    def _detect_real_extension(self, file_path: Path) -> str:
+        """检测图片真实格式并返回正确的扩展名（带点）
+        
+        上游会把所有图片后缀改成.jpg，这里通过文件头检测真实格式。
+        """
+        try:
+            # 读取前32字节（足够检测所有格式）
+            with open(file_path, 'rb') as f:
+                header = f.read(32)
+            
+            ext = get_image_extension(header, default='jpg')
+            return f'.{ext}'
+        except Exception:
+            # 检测失败时使用原文件后缀
+            return file_path.suffix.lower() or '.jpg'
+
     def save_meme(
         self,
         source_file: Path,
@@ -135,7 +151,10 @@ class MemeStorage:
         target_dir = self.paths.stickers_dir / category
         target_dir.mkdir(parents=True, exist_ok=True)
 
-        target_file = target_dir / safe_filename(save_name, source_file.suffix.lower())
+        # 检测图片真实格式（修复上游改后缀名的bug）
+        real_ext = self._detect_real_extension(source_file)
+        
+        target_file = target_dir / safe_filename(save_name, real_ext, force_extension=True)
         if target_file.exists():
             target_file = target_dir / f"{target_file.stem}_{int(time.time())}{target_file.suffix}"
 
