@@ -43,7 +43,13 @@ class StickerRenderer:
         components = []
         try:
             available_stickers = self.storage.get_available_stickers_data()
-            pattern = re.compile(r":([a-zA-Z0-9_\-\u4e00-\u9fff]+):")
+            if not available_stickers:
+                return [Plain(text)]
+
+            # Only match currently available sticker names to avoid splitting
+            # plain text segments like time strings (e.g. ":00:").
+            names = sorted((re.escape(name) for name in available_stickers), key=len, reverse=True)
+            pattern = re.compile(r":(" + "|".join(names) + r"):")
             last_end = 0
 
             for match in pattern.finditer(text):
