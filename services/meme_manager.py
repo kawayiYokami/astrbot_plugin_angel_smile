@@ -1,3 +1,5 @@
+"""MemeManager: orchestrates meme ingestion with dedup checking."""
+
 from asyncio import Lock
 from pathlib import Path
 from typing import Optional
@@ -10,7 +12,7 @@ from ..models import MemeToolResult
 from ..utils import (
     get_allowed_image_roots,
     is_path_within_roots,
-    normalize_category_name,
+    is_valid_meme_name,
     resolve_user_path,
 )
 from .dedup import DHashDedupService
@@ -48,73 +50,84 @@ class MemeManager:
 
         if text.startswith("file:///"):
             local_path = text[8:]
-            # Windows 兼容: file:///d:/path -> /d:/path -> d:/path
+            # Windows: file:///d:/path -> /d:/path -> d:/path
             if len(local_path) > 2 and local_path[0] == "/" and local_path[2] == ":":
                 local_path = local_path[1:]
             return resolve_user_path(local_path), False
 
         return resolve_user_path(text), False
 
-    async def steal_meme(
-        self,
-        image_path: str,
-        category: str,
-        description: Optional[str] = None,
-        save_name: Optional[str] = None,
-    ) -> str:
-        raw_path, from_url = await self._resolve_image_ref(image_path)
+    async def ingest_meme(self, emotion: str, path: str) -> str:
+        """Ingest a meme image into .meme/ directory.
+
+        Args:
+            emotion: The meme name (used as :emotion: token in chat).
+            path: Image reference (local path, file:/// or http(s) URL).
+
+        Returns:
+            JSON string with operation result.
+        """
+        if not is_valid_meme_name(emotion):
+            return MemeToolResult(
+                ok=False, saved=False, emotion=emotion,
+                message=f"无效的表情名: {emotion}",
+            ).to_message()
+
+        raw_path, from_url = await self._resolve_image_ref(path)
         if raw_path is None:
-            return f"无法解析图片引用: {image_path}"
+            return MemeToolResult(
+                ok=False, saved=False, emotion=emotion,
+                message=f"无法解析图片引用: {path}",
+            ).to_message()
 
         if not raw_path.exists() or not raw_path.is_file():
-            return f"图片不存在或不是文件: {raw_path}"
+            return MemeToolResult(
+                ok=False, saved=False, emotion=emotion,
+                message=f"图片不存在或不是文件: {raw_path}",
+            ).to_message()
 
         if not is_path_within_roots(raw_path, self.allowed_image_roots):
-            return "图片路径不在允许的目录范围内。"
+            return MemeToolResult(
+                ok=False, saved=False, emotion=emotion,
+                message="图片路径不在允许的目录范围内。",
+            ).to_message()
 
         suffix = raw_path.suffix.lower()
         if suffix not in SUPPORTED_IMAGE_SUFFIXES:
-            return f"暂不支持的图片格式: {suffix or '无扩展名'}"
-
-        if not category.strip():
-            return "缺少 category。请先根据分类目录选择一个分类，再调用图片入库工具保存。"
-
-        final_category = normalize_category_name(category)
-        final_description = str(
-            description
-            or self.storage.get_catalog_description(final_category)
-            or "手动指定分类导入的表情包"
-        ).strip()
-        reason = "手动指定分类"
-        overwrite_description = bool(description)
+            return MemeToolResult(
+                ok=False, saved=False, emotion=emotion,
+                message=f"暂不支持的图片格式: {suffix or '无扩展名'}",
+            ).to_message()
 
         async with self.write_lock:
+            # Dedup check
             duplicate = self.dedup.find_similar_duplicate(raw_path)
             if duplicate is not None:
                 return MemeToolResult(
-                    ok=True,
-                    saved=False,
-                    category=final_category,
-                    description=final_description,
-                    message="这个表情包已经偷过了",
-                    reason="这个表情包已经偷过了",
+                    ok=True, saved=False, emotion=emotion,
+                    message="这个表情包已经收过了",
                     duplicate=True,
-                    duplicate_type="similar",
                     matched_file=str(duplicate.matched_file),
                     distance=duplicate.distance,
                 ).to_message()
 
-            result = self.storage.save_meme(
-                source_file=Path(raw_path),
-                category=final_category,
-                description=final_description,
-                reason=reason,
-                save_name=save_name,
-                overwrite_description=overwrite_description,
-            )
-            self.dedup.register_file(result.saved_file)
+            # Ingest
+            saved_file = self.storage.ingest_meme(emotion, raw_path)
+
+            # Update dhash index for moved file (single->folder upgrade)
+            move_info = self.storage.get_last_move_info()
+            if move_info:
+                old_path, new_path = move_info
+                self.dedup.update_path(old_path, new_path)
+
+            # Register new file
+            self.dedup.register_file(saved_file)
 
         if from_url:
-            logger.info("AngelSmile: 已从 URL 下载并保存表情: %s", image_path)
+            logger.info("AngelSmile: 已从 URL 下载并保存表情: %s", path)
 
-        return result.to_tool_result().to_message()
+        return MemeToolResult(
+            ok=True, saved=True, emotion=emotion,
+            saved_file=saved_file,
+            message="成功",
+        ).to_message()

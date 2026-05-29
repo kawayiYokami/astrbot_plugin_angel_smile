@@ -1,60 +1,47 @@
+"""Meme tool: ingest images into .meme/ sticker library."""
+
 from dataclasses import dataclass, field
-from typing import Optional, Protocol
+from typing import Protocol
 
 from astrbot.api import FunctionTool
 from astrbot.api.event import AstrMessageEvent
 
-from ..constants import STEAL_TOOL_NAME
+from ..constants import MEME_TOOL_NAME
 
 
 class MemeManagerProtocol(Protocol):
-    async def steal_meme(
-        self,
-        image_path: str,
-        category: str,
-        description: Optional[str] = None,
-        save_name: Optional[str] = None,
-    ) -> str: ...
+    async def ingest_meme(self, emotion: str, path: str) -> str: ...
 
 
 @dataclass
-class StealMemeTool(FunctionTool):
+class MemeIngestTool(FunctionTool):
     manager: MemeManagerProtocol | None = field(repr=False, default=None)
-    name: str = STEAL_TOOL_NAME
-    description: str = (
-        "接收图片引用（本地路径、file:/// 或 http(s) URL），并按给定 category 保存到天使之笑插件目录。"
-        "调用前应先根据分类目录自行判断分类。"
-    )
+    name: str = MEME_TOOL_NAME
+    description: str = "把图片收入贴纸库。参数：emotion 为贴纸名，path 为图片路径。"
     parameters: dict = field(
         default_factory=lambda: {
             "type": "object",
             "properties": {
-                "image_path": {
+                "emotion": {
                     "type": "string",
-                    "description": "图片引用：本地绝对路径、相对路径、file:/// 或 http(s) URL。"
+                    "description": "贴纸名，即聊天中使用的 :贴纸名: token。",
                 },
-                "category": {"type": "string", "description": "必填，要保存到的表情分类名。"},
-                "description": {"type": "string", "description": "可选，该分类的中文用途描述；仅在新建分类时会写入。"},
-                "save_name": {"type": "string", "description": "可选，保存后的文件名，不含路径。"},
+                "path": {
+                    "type": "string",
+                    "description": "图片引用：本地绝对路径、file:/// 或 http(s) URL。",
+                },
             },
-            "required": ["image_path", "category"],
+            "required": ["emotion", "path"],
         }
     )
 
     async def run(
         self,
         event: AstrMessageEvent,
-        image_path: str,
-        category: str,
-        description: Optional[str] = None,
-        save_name: Optional[str] = None,
+        emotion: str,
+        path: str,
     ) -> str:
         _ = event
         if self.manager is None:
-            raise RuntimeError("StealMemeTool manager is not initialized")
-        return await self.manager.steal_meme(
-            image_path=image_path,
-            category=category,
-            description=description,
-            save_name=save_name,
-        )
+            raise RuntimeError("MemeIngestTool manager is not initialized")
+        return await self.manager.ingest_meme(emotion=emotion, path=path)

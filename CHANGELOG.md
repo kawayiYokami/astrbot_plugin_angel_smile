@@ -1,7 +1,28 @@
 # Changelog
 
+## 2.0.0 - 2026-05-29
+
+### Breaking Changes
+- 移除 `memes_data.json` 持久索引，可用 meme 列表改为扫描 `memes/` 目录动态生成。
+- 工具名从 `steal_meme_to_smile` 改为 `meme`，参数简化为 `emotion` + `path`。
+- 移除 `default/memes_data.json` 默认分类文件。
+- 提示词不再使用"分类 + 描述"双层结构，直接列出可用 meme 名。
+
+### New
+- 入库统一转换为 WebP 格式。
+- 同名 meme 多次入库自动升级为文件夹结构：首次单文件 → 第二次建文件夹 → 后续递增编号 `(2)`, `(3)`...
+- 渲染选择改为稳定选择（基于 message_id + meme_name + token_index），同一消息重复渲染不会跳变。
+- 内存索引缓存，5 分钟 TTL，入库后立即失效刷新。
+- dHash 去重保留孤儿路径：用户手动删除的图片 hash 仍保留，防止同图被再次收入。
+- dHash 索引路径在单文件升级为文件夹时自动同步更新。
+
+### Removed
+- 移除 `normalize_category_name()`、`safe_filename()` 等旧分类相关工具函数。
+- 移除 `MemeSaveResult` 数据类，简化 `MemeToolResult`。
+- 移除 `DEFAULT_CATEGORY`、`DEFAULT_CATEGORY_DESCRIPTION` 常量。
+
 ## 1.0.3 - 2026-03-19
-- 修复表情渲染分词范围：仅匹配“可用表情”名称，不再把普通 `:xxx:` 文本（如时间里的 `:00:`）当作表情标签切分。
+- 修复表情渲染分词范围：仅匹配"可用表情"名称，不再把普通 `:xxx:` 文本（如时间里的 `:00:`）当作表情标签切分。
 - 新增 `render` 回归测试，覆盖时间字符串场景，确保非表情文本保持原样。
 - 补充测试桩中的 `astrbot.core.message.components` 假实现，保障渲染测试可稳定运行。
 
@@ -17,7 +38,7 @@
 
 ## 1.0.0 - 2026-03-10
 - 初始化 `天使之笑` 插件，提供独立的表情目录与图片入库工具。
-- 新增“可用表情 / 暂不可用表情”分类提示，供 LLM 在回复与整理素材时参考。
+- 新增"可用表情 / 暂不可用表情"分类提示，供 LLM 在回复与整理素材时参考。
 - 支持根据 `:tag:` 语法在回复中插入已存在的表情素材。
 - 新增 `steal_meme_to_smile` 工具，用于按指定分类保存本地图片素材。
 - 插件仅提供默认分类目录 `default/memes_data.json`，后续素材由模型自行补齐。

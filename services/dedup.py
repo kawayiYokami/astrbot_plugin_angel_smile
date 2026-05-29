@@ -1,3 +1,11 @@
+"""dHash-based image deduplication service.
+
+The dhash index is ONLY used for duplicate detection during ingest.
+It does NOT participate in the available meme list.
+Orphan entries (files that no longer exist) are intentionally preserved
+to prevent re-ingestion of previously removed images.
+"""
+
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -6,6 +14,8 @@ from typing import Dict, Optional
 from PIL import Image, UnidentifiedImageError
 
 from astrbot.api import logger
+
+from ..constants import DHASH_INDEX_FILENAME
 
 
 @dataclass(slots=True)
@@ -19,37 +29,49 @@ class DHashDedupService:
     def __init__(self, storage, threshold: int = 8):
         self.storage = storage
         self.threshold = threshold
-        self.index_path = self.storage.paths.data_dir / "image_dhash_index.json"
-        self.index: Dict[str, str] = {}
+        self.index_path = self.storage.paths.meme_dir / DHASH_INDEX_FILENAME
+        self.index: Dict[str, str] = {}  # relative_path -> dhash_hex
 
     def initialize(self) -> None:
         self.index = self._load_index()
         self._rebuild_missing_entries()
 
     def find_similar_duplicate(self, source_file: Path) -> Optional[DuplicateMatch]:
+        """Check if source_file is a duplicate of any indexed image.
+
+        Checks ALL entries including orphans (files that no longer exist on disk).
+        This prevents re-ingestion of previously removed images.
+        """
         candidate_hash = self.compute_dhash(source_file)
         if not candidate_hash:
             return None
 
-        for file_path_str, existing_hash in self.index.items():
-            file_path = Path(file_path_str)
-            if not file_path.exists():
-                continue
+        for rel_path_str, existing_hash in self.index.items():
             distance = self.hamming_distance(candidate_hash, existing_hash)
             if distance <= self.threshold:
                 return DuplicateMatch(
-                    matched_file=file_path,
+                    matched_file=self.storage.paths.meme_dir / rel_path_str,
                     distance=distance,
                     dhash=existing_hash,
                 )
         return None
 
     def register_file(self, file_path: Path) -> None:
+        """Register a newly saved file in the dhash index."""
         image_hash = self.compute_dhash(file_path)
         if not image_hash:
             return
-        self.index[str(file_path.resolve())] = image_hash
+        rel_path = self._to_relative(file_path)
+        self.index[rel_path] = image_hash
         self._persist_index()
+
+    def update_path(self, old_path: Path, new_path: Path) -> None:
+        """Update the index when a file is moved (e.g. single->folder upgrade)."""
+        old_rel = self._to_relative(old_path)
+        new_rel = self._to_relative(new_path)
+        if old_rel in self.index:
+            self.index[new_rel] = self.index.pop(old_rel)
+            self._persist_index()
 
     def compute_dhash(self, image_path: Path) -> str:
         try:
@@ -82,6 +104,17 @@ class DHashDedupService:
         right_bits = bin(int(right, 16))[2:].zfill(max_len * 4)
         return sum(bit_left != bit_right for bit_left, bit_right in zip(left_bits, right_bits))
 
+    # ------------------------------------------------------------------
+    # Internal
+    # ------------------------------------------------------------------
+
+    def _to_relative(self, file_path: Path) -> str:
+        """Convert absolute path to relative path from .meme/ directory."""
+        try:
+            return str(file_path.resolve().relative_to(self.storage.paths.meme_dir.resolve()))
+        except ValueError:
+            return str(file_path.resolve())
+
     def _load_index(self) -> Dict[str, str]:
         if not self.index_path.exists():
             return {}
@@ -92,27 +125,25 @@ class DHashDedupService:
             normalized: Dict[str, str] = {}
             for raw_key, raw_value in raw_data.items():
                 if isinstance(raw_key, str) and isinstance(raw_value, str):
-                    normalized[str(Path(raw_key).resolve())] = raw_value
+                    normalized[raw_key] = raw_value
             return normalized
         except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
-            logger.warning(f"AngelSmile: 读取 dHash 索引失败，已重建: {exc}")
+            logger.warning(f"AngelSmile: 读取 dHash 索引失败，按空库处理: {exc}")
             return {}
 
     def _rebuild_missing_entries(self) -> None:
+        """Add index entries for files that exist on disk but are not indexed.
+
+        IMPORTANT: Does NOT remove orphan entries. Orphans are kept intentionally
+        to block re-ingestion of previously removed images.
+        """
         changed = False
-        existing_files = {str(path.resolve()) for path in self.storage.iter_all_sticker_files()}
-
-        for indexed_file in list(self.index):
-            if indexed_file not in existing_files:
-                self.index.pop(indexed_file, None)
-                changed = True
-
         for file_path in self.storage.iter_all_sticker_files():
-            resolved = str(file_path.resolve())
-            if resolved not in self.index:
+            rel_path = self._to_relative(file_path)
+            if rel_path not in self.index:
                 image_hash = self.compute_dhash(file_path)
                 if image_hash:
-                    self.index[resolved] = image_hash
+                    self.index[rel_path] = image_hash
                     changed = True
 
         if changed:
@@ -120,6 +151,7 @@ class DHashDedupService:
 
     def _persist_index(self) -> None:
         try:
+            self.index_path.parent.mkdir(parents=True, exist_ok=True)
             self.index_path.write_text(
                 json.dumps(self.index, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
