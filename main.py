@@ -60,16 +60,21 @@ class AngelSmilePlugin(Star):
         self.meme_tool.description = self.renderer.build_tool_description()
 
         instruction_prompt = f"""
-<表情包>
-使用规则：
-1. 当你需要使用表情包时，请使用如下格式：:meme名:
-2. 每条消息最多使用 {self.max_stickers_per_message} 个表情包。
-3. 使用表情包后，不要再用 emoji、颜文字或重复的情绪描述词表达同一种情绪。
-4. 只有在表达情绪、语气或态度时才使用表情包。
-5. 执行任务、给出步骤、写代码、处理严肃问题时，尽量不要使用表情包。
+<表情贴纸>
+使用方式：直接写贴纸格式，贴纸名必须来自下方"可用贴纸清单"。
+错误写法：`:meme名:`、`:贴纸名:`、`:<名字>:`、`:{{名字}}:`（这些都是占位符，不要照抄字面）。
+
+其他规则：
+1. 每条消息最多使用 {self.max_stickers_per_message} 个表情包
+2. 使用贴纸请克制，仅在闲聊，感情强烈时才使用
+3. 执行任务、给出步骤、写代码、处理严肃问题时，不要使用表情包
+4. 禁止贴纸格式前后加括号
+5. 禁止在贴纸格式内部加贴纸名以外的任何辅助文本
+
+可用贴纸清单：
 
 {prompt_injection}
-</表情包>
+</表情贴纸>
 """
         req.system_prompt = f"{req.system_prompt or ''}\n\n{instruction_prompt}"
 
