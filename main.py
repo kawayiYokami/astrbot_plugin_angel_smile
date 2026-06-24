@@ -27,7 +27,7 @@ class AngelSmilePlugin(Star):
         self.max_stickers_per_message = self.config.get("max_stickers_per_message", 1)
 
         plugin_dir = Path(__file__).resolve().parent
-        data_dir = Path(StarTools.get_data_dir())
+        data_dir = Path(StarTools.get_data_dir("astrbot_plugin_angel_smile"))
         paths = PluginPaths(
             plugin_dir=plugin_dir,
             data_dir=data_dir,
