@@ -115,45 +115,56 @@ class MemeStorage:
     # ------------------------------------------------------------------
 
     def ingest_meme(self, emotion: str, source_file: Path) -> Path:
-        """Ingest a source image into .meme/ as WebP.
+        """Ingest a source image into .meme/.
 
         Handles the progression:
-        1. First time: .meme/<emotion>.webp
+        1. First time: .meme/<emotion><suffix>
         2. Second time: create folder, move old file, add new as (2)
         3. Subsequent: add next numbered variant
+
+        GIF sources are copied as-is (preserving animation) with .gif
+        suffix; other formats are converted to .webp.
 
         Returns the path of the newly saved file.
         Invalidates the in-memory cache after write.
         """
         meme_dir = self.paths.meme_dir
-        single_file = meme_dir / f"{emotion}.webp"
+        suffix = ".gif" if source_file.suffix.lower() == ".gif" else ".webp"
         folder = meme_dir / emotion
 
         if folder.exists() and folder.is_dir():
             # Folder already exists: add next variant
-            target = self._next_variant_path(folder, emotion)
-            self._convert_to_webp(source_file, target)
+            target = self._next_variant_path(folder, emotion, suffix)
+            self._save_file(source_file, target)
             self.invalidate_cache()
             return target
 
-        if single_file.exists():
+        existing_root = sorted(
+            p for p in meme_dir.iterdir()
+            if p.is_file()
+            and p.stem == emotion
+            and p.suffix.lower() in SUPPORTED_IMAGE_SUFFIXES
+        )
+        if existing_root:
             # Single file exists: upgrade to folder structure
             folder.mkdir(parents=True, exist_ok=True)
-            moved_path = folder / f"{emotion}.webp"
-            shutil.move(str(single_file), str(moved_path))
+            old_path = existing_root[0]
+            moved_path = folder / old_path.name
+            shutil.move(str(old_path), str(moved_path))
             # Notify caller about the move for dhash path update
-            self._last_moved_from = single_file
+            self._last_moved_from = old_path
             self._last_moved_to = moved_path
 
-            target = folder / f"{emotion}(2).webp"
-            self._convert_to_webp(source_file, target)
+            target = self._next_variant_path(folder, emotion, suffix)
+            self._save_file(source_file, target)
             self.invalidate_cache()
             return target
 
         # First time: save as single root file
         self._last_moved_from = None
         self._last_moved_to = None
-        self._convert_to_webp(source_file, single_file)
+        single_file = meme_dir / f"{emotion}{suffix}"
+        self._save_file(source_file, single_file)
         self.invalidate_cache()
         return single_file
 
@@ -165,25 +176,36 @@ class MemeStorage:
             return (old, new)
         return None
 
-    def _next_variant_path(self, folder: Path, emotion: str) -> Path:
+    def _next_variant_path(self, folder: Path, emotion: str, suffix: str) -> Path:
         """Find the next available variant filename in a folder.
 
-        Naming: <emotion>.webp, <emotion>(2).webp, <emotion>(3).webp, ...
+        Naming: <emotion><suffix>, <emotion>(2)<suffix>, <emotion>(3)<suffix>, ...
         """
         existing = {p.name for p in folder.iterdir() if p.is_file()}
 
         # Check if base name is available
-        base_name = f"{emotion}.webp"
+        base_name = f"{emotion}{suffix}"
         if base_name not in existing:
             return folder / base_name
 
         # Find next available number starting from (2)
         n = 2
         while True:
-            candidate = f"{emotion}({n}).webp"
+            candidate = f"{emotion}({n}){suffix}"
             if candidate not in existing:
                 return folder / candidate
             n += 1
+
+    def _save_file(self, source: Path, target: Path) -> None:
+        """Save source image to target path.
+
+        GIF sources are copied as-is to preserve animation; other
+        formats are converted to WebP.
+        """
+        if source.suffix.lower() == ".gif":
+            shutil.copy2(source, target)
+            return
+        self._convert_to_webp(source, target)
 
     def _convert_to_webp(self, source: Path, target: Path) -> None:
         """Convert source image to WebP and save to target path."""

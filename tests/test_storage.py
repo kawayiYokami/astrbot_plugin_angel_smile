@@ -32,6 +32,17 @@ class StorageTestCase(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         Image.new("RGB", (16, 16), color=color).save(path)
 
+    def _create_gif(self, path: Path, frames: int = 3):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        frame_list = [
+            Image.new("RGB", (16, 16), color=f"rgb({i * 40},0,0)")
+            for i in range(frames)
+        ]
+        frame_list[0].save(
+            path, format="GIF", save_all=True,
+            append_images=frame_list[1:], duration=100, loop=0,
+        )
+
     def test_scan_root_single_file(self):
         """Root image file is listed as a meme."""
         self._create_image(self.paths.meme_dir / "坏笑.webp")
@@ -83,6 +94,17 @@ class StorageTestCase(unittest.TestCase):
         result = self.storage.ingest_meme("坏笑", source)
         self.assertEqual(result, self.paths.meme_dir / "坏笑.webp")
         self.assertTrue(result.exists())
+
+    def test_ingest_gif_keeps_original(self):
+        """GIF source is copied as-is with .gif suffix, animation preserved."""
+        source = Path(self.temp_dir.name) / "anim.gif"
+        self._create_gif(source)
+
+        result = self.storage.ingest_meme("坏笑", source)
+        self.assertEqual(result, self.paths.meme_dir / "坏笑.gif")
+        self.assertTrue(result.exists())
+        # Copied byte-for-byte, not converted
+        self.assertEqual(result.read_bytes(), source.read_bytes())
 
     def test_ingest_second_time_upgrades_to_folder(self):
         """Second ingest creates folder and moves original."""

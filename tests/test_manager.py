@@ -30,6 +30,18 @@ def _create_image(path: Path, color: str = "red", size=(64, 64)):
     img.save(path)
 
 
+def _create_gif(path: Path, frames: int = 3):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame_list = [
+        Image.new("RGB", (64, 64), color=f"rgb({i * 40},0,0)")
+        for i in range(frames)
+    ]
+    frame_list[0].save(
+        path, format="GIF", save_all=True,
+        append_images=frame_list[1:], duration=100, loop=0,
+    )
+
+
 class MemeManagerTestCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -58,6 +70,28 @@ class MemeManagerTestCase(unittest.IsolatedAsyncioTestCase):
         result = await self.manager.ingest_meme("坏笑", str(source))
         self.assertIn('"saved": true', result)
         self.assertTrue((self.paths.meme_dir / "坏笑.webp").exists())
+
+    async def test_gif_ingest_keeps_original(self):
+        """GIF is stored as-is with .gif suffix."""
+        source = Path(self.temp_dir.name) / "anim.gif"
+        _create_gif(source)
+
+        result = await self.manager.ingest_meme("坏笑", str(source))
+        self.assertIn('"saved": true', result)
+        gif_path = self.paths.meme_dir / "坏笑.gif"
+        self.assertTrue(gif_path.exists())
+        self.assertEqual(gif_path.read_bytes(), source.read_bytes())
+
+    async def test_oversized_gif_rejected(self):
+        """GIF over 5MB is rejected with an error message."""
+        source = Path(self.temp_dir.name) / "big.gif"
+        source.write_bytes(b"GIF89a" + b"\x00" * (5 * 1024 * 1024 + 1))
+
+        result = await self.manager.ingest_meme("坏笑", str(source))
+        self.assertIn('"ok": false', result)
+        self.assertIn('"saved": false', result)
+        self.assertIn("图片过大", result)
+        self.assertFalse((self.paths.meme_dir / "坏笑.gif").exists())
 
     async def test_second_ingest_upgrades(self):
         """Second ingest upgrades to folder structure."""

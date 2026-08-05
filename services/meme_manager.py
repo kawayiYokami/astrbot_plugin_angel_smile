@@ -7,7 +7,7 @@ from typing import Optional
 from astrbot.api import logger
 from astrbot.core.utils.io import download_image_by_url
 
-from ..constants import SUPPORTED_IMAGE_SUFFIXES
+from ..constants import GIF_MAX_BYTES, SUPPORTED_IMAGE_SUFFIXES
 from ..models import MemeToolResult
 from ..utils import (
     get_allowed_image_roots,
@@ -97,6 +97,13 @@ class MemeManager:
             return MemeToolResult(
                 ok=False, saved=False, emotion=emotion,
                 message=f"暂不支持的图片格式: {suffix or '无扩展名'}",
+            ).to_message()
+
+        # GIF is kept as-is; reject oversized files before dedup/write
+        if suffix == ".gif" and raw_path.stat().st_size > GIF_MAX_BYTES:
+            return MemeToolResult(
+                ok=False, saved=False, emotion=emotion,
+                message="图片过大，无法作为表情",
             ).to_message()
 
         async with self.write_lock:
