@@ -312,8 +312,8 @@ const fallbackImage =
   'data:image/svg+xml;utf8,' +
   encodeURIComponent(
     "<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'>" +
-      "<rect width='100%' height='100%' fill='#f2f3f5'/>" +
-      "<text x='50%' y='50%' fill='#999' font-size='14' text-anchor='middle' dominant-baseline='middle'>图片缺失</text>" +
+      "<rect width='100%' height='100%' fill='#2f3337'/>" +
+      "<text x='50%' y='50%' fill='#80858c' font-size='14' text-anchor='middle' dominant-baseline='middle'>图片缺失</text>" +
       '</svg>',
   )
 

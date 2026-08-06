@@ -1,5 +1,5 @@
 <template>
-  <n-config-provider :locale="zhCN" :date-locale="dateZhCN">
+  <n-config-provider :theme="darkTheme" :locale="zhCN" :date-locale="dateZhCN">
     <n-message-provider>
       <n-dialog-provider>
         <meme-manage-panel />
@@ -13,6 +13,7 @@ import {
   NConfigProvider,
   NDialogProvider,
   NMessageProvider,
+  darkTheme,
   dateZhCN,
   zhCN,
 } from 'naive-ui'

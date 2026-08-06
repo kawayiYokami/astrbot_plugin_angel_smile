@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.1 - 2026-08-07
+
+### Changed
+- WebUI 主题切换为深色（darkTheme），与 angel_heart、angel_memory 统一。
+- 图片放大预览遮罩加深至 85%，图片缺失占位适配深色背景。
+
 ## 2.2.0 - 2026-08-06
 
 ### New
