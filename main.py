@@ -42,6 +42,15 @@ class AngelSmilePlugin(Star):
         self.meme_tool = MemeIngestTool(manager=self.manager)
         self.context.add_llm_tools(self.meme_tool)
 
+        # -- 注册 WebUI API 路由（表情库管理页）--
+        try:
+            from .web_api import register_all_routes
+
+            register_all_routes(self.context, self.storage, self.manager)
+            logger.info("AngelSmile: 已注册表情管理 WebUI API 路由")
+        except Exception as e:  # pragma: no cover - 兼容旧版 AstrBot
+            logger.warning(f"AngelSmile: WebUI API 路由注册失败（不影响核心功能）: {e}")
+
     async def initialize(self):
         self.storage.initialize()
         self.manager.initialize()
