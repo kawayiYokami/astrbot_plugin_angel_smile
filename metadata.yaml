@@ -2,7 +2,7 @@ name: astrbot_plugin_angel_smile
 display_name: 天使之笑
 desc: "表情包斗图：AI发消息自动配meme表情，看中的图一句话收进贴纸库存，群聊斗图必备。"
 short_desc: "AI自动斗图、一键收藏表情包"
-version: 2.3.3
+version: 2.3.4
 author: kawayiYokami
 repo: https://github.com/kawayiYokami/astrbot_plugin_angel_smile
 social_link: https://github.com/kawayiYokami
