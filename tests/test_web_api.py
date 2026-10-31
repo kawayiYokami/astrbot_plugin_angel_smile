@@ -392,5 +392,50 @@ class TestDeleteVariants(MemeAPIBaseTestCase):
         self.assertEqual(body["status"], "error")
 
 
+def _b64url(name: str) -> str:
+    import base64
+
+    return base64.urlsafe_b64encode(name.encode("utf-8")).decode("ascii").rstrip("=")
+
+
+class _FakeUpload:
+    """最小可用的上传对象：只实现 handler 用到的 filename 与 save()。"""
+
+    def __init__(self, src: Path, filename: str):
+        self.filename = filename
+        self._src = src
+
+    async def save(self, destination, *, max_bytes=None):
+        import shutil
+
+        shutil.copyfile(self._src, destination)
+        return Path(destination).stat().st_size
+
+
+class TestUploadMeme(MemeAPIBaseTestCase):
+    async def asyncSetUp(self):
+        self.src = Path(self.temp_dir.name) / "src.png"
+        _create_image(self.src, color="red")
+
+    async def _upload(self, *, token: str = ""):
+        self.request.set_files({"file": _FakeUpload(self.src, "probe.png")})
+        self.request.set_form({})
+        try:
+            resp = await self.api.upload_meme(token=token)
+        finally:
+            self.request.set_files({})
+        return _unwrap(resp)
+
+    async def test_token_path_upload(self):
+        body = await self._upload(token=_b64url("冷笑"))
+        self.assertEqual(body["status"], "ok")
+        self.assertEqual(body["data"]["emotion"], "冷笑")
+        self.assertTrue((self.paths.meme_dir / "冷笑.webp").exists())
+
+    async def test_upload_temp_file_cleaned(self):
+        await self._upload(token=_b64url("坏笑"))
+        self.assertEqual(list((self.paths.data_dir / "upload_tmp").glob("upload_*")), [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -41,6 +41,24 @@ def _mime_for_suffix(suffix: str) -> str:
     return _MIME_BY_SUFFIX.get(suffix.lower(), "application/octet-stream")
 
 
+def _decode_emotion_token(token: str) -> str:
+    """base64url(UTF-8) → 表情名。"""
+    import base64
+    import binascii
+
+    token = (token or "").strip()
+    if not token:
+        return ""
+    try:
+        raw = base64.urlsafe_b64decode(token + "=" * (-len(token) % 4))
+    except (binascii.Error, ValueError):
+        return ""
+    try:
+        return raw.decode("utf-8").strip()
+    except UnicodeDecodeError:
+        return ""
+
+
 async def _get_json() -> Dict:
     """读取请求体 JSON；非 JSON 或缺失时返回空 dict。"""
     data = await request.json(default=None)
@@ -133,8 +151,8 @@ class MemeAPI:
 
     # ---------- 上传 ----------
 
-    async def upload_meme(self):
-        """上传新表情：multipart 表单（emotion + file）。"""
+    async def upload_meme(self, token: str = ""):
+        """上传新表情。token 来自 memes/upload/<token> 路径段。"""
         emotion = ""
         tmp_path: Optional[Path] = None
         try:
@@ -144,6 +162,8 @@ class MemeAPI:
             upload = files.get("file")
             if upload is None:
                 return _err("缺少上传文件")
+            if not emotion:
+                emotion = _decode_emotion_token(token)
             tmp_path = await self._save_upload(upload)
 
             result_text = await self.manager.ingest_meme(
@@ -179,12 +199,20 @@ class MemeAPI:
         )
 
     async def _save_upload(self, upload) -> Path:
-        """保存上传文件到临时目录。"""
-        import tempfile
+        """存到数据目录内的临时文件（/tmp 不在 ingest 白名单里）。"""
+        import uuid
 
         suffix = Path(upload.filename or "").suffix.lower()
-        tmp = Path(tempfile.gettempdir()) / f"angel_smile_upload_{id(upload)}{suffix}"
-        await upload.save(str(tmp))
+        if suffix not in _MIME_BY_SUFFIX:
+            suffix = ""
+        tmp_dir = self.storage.paths.data_dir / "upload_tmp"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        tmp = tmp_dir / f"upload_{uuid.uuid4().hex}{suffix}"
+        try:
+            await upload.save(str(tmp))
+        except Exception:
+            tmp.unlink(missing_ok=True)
+            raise
         return tmp
 
     # ---------- 删除 ----------
@@ -392,6 +420,12 @@ def register_all_routes(context, storage, manager, plugin=None) -> None:
         ("/astrbot_plugin_angel_smile/memes/image", api.meme_image, ["GET"], "表情图片预览"),
         ("/astrbot_plugin_angel_smile/memes/image/b64", api.meme_image_b64, ["GET"], "表情图片 base64 data URL"),
         ("/astrbot_plugin_angel_smile/memes/upload", api.upload_meme, ["POST"], "上传新表情"),
+        (
+            "/astrbot_plugin_angel_smile/memes/upload/<token>",
+            api.upload_meme,
+            ["POST"],
+            "上传表情（bridge，表情名走路径段）",
+        ),
         ("/astrbot_plugin_angel_smile/memes/delete", api.delete_meme, ["POST"], "删除表情"),
         ("/astrbot_plugin_angel_smile/memes/rename", api.rename_meme, ["POST"], "重命名表情"),
         ("/astrbot_plugin_angel_smile/memes/variant/delete", api.delete_variant, ["POST"], "删除单个变体"),

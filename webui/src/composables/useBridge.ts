@@ -102,5 +102,22 @@ export function useBridge() {
     return (json?.data ?? json) as T
   }
 
-  return { init, apiGet, apiPost }
+  async function upload<T = unknown>(endpoint: string, file: File): Promise<T> {
+    if (bridge) {
+      return (await bridge.upload(endpoint, file)) as T
+    }
+    const form = new FormData()
+    form.append('file', file)
+    const resp = await fetch(`/api/plug/${PLUGIN_NAME}/${endpoint}`, {
+      method: 'POST',
+      body: form,
+    })
+    const json = await resp.json()
+    if (json?.status === 'error') {
+      throw new Error(json.message || '上传失败')
+    }
+    return (json?.data ?? json) as T
+  }
+
+  return { init, apiGet, apiPost, upload }
 }

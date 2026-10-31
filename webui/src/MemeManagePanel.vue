@@ -353,7 +353,16 @@ const PLUGIN_NAME = 'astrbot_plugin_angel_smile'
 
 const message = useMessage()
 const themeVars = useThemeVars()
-const { apiGet, apiPost } = useBridge()
+const { apiGet, apiPost, upload } = useBridge()
+
+function emotionToken(name: string): string {
+  const bytes = new TextEncoder().encode(name)
+  let bin = ''
+  bytes.forEach((b) => {
+    bin += String.fromCharCode(b)
+  })
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
 const theme = inject(themeKey)!
 const { isDark, toggle: toggleTheme } = theme
 
@@ -652,23 +661,25 @@ function onUploadChange(options: { file: { file?: File | null } }) {
 
 async function submitUpload() {
   if (!uploadFile.value) return
+  const emotion = uploadForm.emotion.trim()
+  if (!emotion) {
+    message.warning('先给表情起个名字')
+    return
+  }
   uploading.value = true
   try {
-    const form = new FormData()
-    form.append('emotion', uploadForm.emotion.trim())
-    form.append('file', uploadFile.value)
-    const resp = await fetch(`/api/plug/${PLUGIN_NAME}/memes/upload`, {
-      method: 'POST',
-      body: form,
-    })
-    const json = await resp.json()
-    if (json?.status === 'error') {
-      throw new Error(json.message || '上传失败')
+    const result = await upload<{ saved?: boolean; duplicate?: boolean }>(
+      `memes/upload/${emotionToken(emotion)}`,
+      uploadFile.value,
+    )
+    if (result?.duplicate) {
+      message.warning('这个表情包已经收过了')
+    } else {
+      message.success('上传成功')
     }
-    message.success(json?.message || '上传成功')
     showUpload.value = false
     await loadMemes()
-    selectedName.value = uploadForm.emotion.trim()
+    selectedName.value = emotion
   } catch (e) {
     message.error(`上传失败: ${(e as Error).message}`)
   } finally {
@@ -694,20 +705,18 @@ function onVariantUploadChange(options: { file: { file?: File | null } }) {
 
 async function submitVariantUpload() {
   if (!variantForm.file || !selectedName.value) return
+  const name = selectedName.value
   uploading.value = true
   try {
-    const form = new FormData()
-    form.append('emotion', selectedName.value)
-    form.append('file', variantForm.file)
-    const resp = await fetch(`/api/plug/${PLUGIN_NAME}/memes/upload`, {
-      method: 'POST',
-      body: form,
-    })
-    const json = await resp.json()
-    if (json?.status === 'error') {
-      throw new Error(json.message || '上传失败')
+    const result = await upload<{ saved?: boolean; duplicate?: boolean }>(
+      `memes/upload/${emotionToken(name)}`,
+      variantForm.file,
+    )
+    if (result?.duplicate) {
+      message.warning('这个表情包已经收过了')
+    } else {
+      message.success('变体已添加')
     }
-    message.success(json?.message || '上传成功')
     showVariantUpload.value = false
     await loadMemes()
   } catch (e) {
