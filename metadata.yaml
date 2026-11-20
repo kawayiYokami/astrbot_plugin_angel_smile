@@ -14,3 +14,8 @@ tags:
   - 贴纸
   - 斗图
   - 群聊
+
+views:
+  - name: meme-manage
+    title: 天使之笑
+    description: 管理表情库：上传、重命名、删除、维护变体
