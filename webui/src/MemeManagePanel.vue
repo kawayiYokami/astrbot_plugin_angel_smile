@@ -1,341 +1,358 @@
 <template>
-  <n-layout class="layout" has-sider :style="cssVars">
-    <!-- 左侧：表情分组导航 -->
-    <n-layout-sider class="glass-sider" width="260"
-      collapse-mode="width"
-      :collapsed-width="56"
-      show-trigger="bar"
-      :collapsed="collapsed"
-      @collapse="collapsed = true"
-      @expand="collapsed = false"
-    >
-      <div class="sidebar-inner" :class="{ 'is-collapsed': collapsed }">
-        <div class="sidebar-header">
-          <button
-            class="theme-toggle"
-            type="button"
-            :title="isDark ? '切换到光模式' : '切换到暗模式'"
-            @click="toggleTheme()"
-          >
-            <Icon :icon="isDark ? 'lucide:sun' : 'lucide:moon'" />
-          </button>
-          <div v-if="!collapsed" class="brand">表情库</div>
-          <n-button
-            v-if="!collapsed"
-            type="primary"
-            @click="openUpload"
-          >
-            <template #icon><Icon icon="lucide:plus" /></template>
+  <!-- 左侧：表情分组导航（240px，可折叠到 56px） -->
+  <v-navigation-drawer
+    :rail="rail"
+    permanent
+    width="240"
+    rail-width="56"
+    class="meme-drawer"
+    color="transparent"
+  >
+    <div class="d-flex flex-column h-100">
+      <div class="drawer-head pa-2" :class="rail ? 'd-flex flex-column align-center ga-2' : 'd-flex align-center ga-2'">
+        <v-btn
+          :icon="rail ? 'lucide:panel-left-open' : 'lucide:panel-left-close'"
+          variant="text"
+          size="small"
+          :aria-label="rail ? '展开侧栏' : '收起侧栏'"
+          @click="toggleRail"
+        />
+        <template v-if="!rail">
+          <span class="text-subtitle-1 font-weight-medium flex-grow-1 text-truncate">表情库</span>
+          <v-btn color="primary" variant="flat" size="small" prepend-icon="lucide:plus" @click="openUpload">
             新增
-          </n-button>
-          <n-button
-            v-else
-            type="primary"
-            circle
-            title="新增"
-            @click="openUpload"
-          >
-            <template #icon><Icon icon="lucide:plus" /></template>
-          </n-button>
-        </div>
-        <n-scrollbar class="sidebar-scroll">
-          <n-menu
-            :value="selectedName ?? undefined"
-            :options="menuOptions"
-            :collapsed="collapsed"
-            :collapsed-width="56"
-            :collapsed-icon-size="20"
-            @update:value="selectMeme"
-          />
-        </n-scrollbar>
-        <div class="sidebar-footer">
-          <n-menu
-            :value="viewMode === 'settings' ? 'settings' : null"
-            :options="settingsMenuOptions"
-            :collapsed="collapsed"
-            :collapsed-width="56"
-            :collapsed-icon-size="20"
-            @update:value="openSettings"
-          />
-        </div>
+          </v-btn>
+        </template>
+        <v-btn
+          v-else
+          color="primary"
+          variant="flat"
+          size="small"
+          icon="lucide:plus"
+          aria-label="新增表情"
+          @click="openUpload"
+        />
       </div>
-    </n-layout-sider>
 
-    <!-- 右侧：选中分组的变体 -->
-    <n-layout-content class="content">
-      <!-- 插件设置视图 -->
-      <div v-if="viewMode === 'settings'" class="settings-wrap">
-        <div class="settings-header">
-          <div>
-            <h2>插件设置</h2>
-            <span class="settings-sub">与 AstrBot 原生插件配置页共用同一份数据，保存后即时生效，无需重启</span>
+      <v-divider />
+
+      <v-list class="flex-grow-1 overflow-y-auto py-2" nav bg-color="transparent">
+        <v-list-item
+          v-for="m in memes"
+          :key="m.name"
+          :active="viewMode === 'memes' && selectedName === m.name"
+          color="primary"
+          @click="selectMeme(m.name)"
+        >
+          <v-list-item-title class="d-flex align-center ga-2">
+            <!-- 折叠态用名称首字代替图标，列表里不再放图片类 icon -->
+            <span v-if="rail" class="text-truncate text-center flex-grow-1">{{ m.name.slice(0, 1) }}</span>
+            <template v-else>
+              <span class="text-truncate flex-grow-1">{{ m.name }}</span>
+              <v-chip size="x-small" variant="tonal" color="primary">{{ m.variants.length }}</v-chip>
+            </template>
+          </v-list-item-title>
+          <v-tooltip v-if="rail" activator="parent" location="end">{{ m.name }}</v-tooltip>
+        </v-list-item>
+
+        <div v-if="!memes.length && !loadingMemes && !rail">
+          <v-empty-state
+            icon="lucide:sticker"
+            title="暂无表情"
+            text="点上方「新增」上传第一个表情"
+            class="pa-2"
+          />
+        </div>
+      </v-list>
+
+      <v-divider />
+
+      <v-list class="py-2" nav bg-color="transparent">
+        <v-list-item :active="viewMode === 'settings'" color="primary" @click="openSettings">
+          <template #prepend>
+            <v-icon icon="lucide:settings" />
+          </template>
+          <v-list-item-title v-if="!rail">插件设置</v-list-item-title>
+          <v-tooltip v-if="rail" activator="parent" location="end">插件设置</v-tooltip>
+        </v-list-item>
+      </v-list>
+    </div>
+  </v-navigation-drawer>
+
+  <!-- 右侧：选中分组的变体 / 插件设置 -->
+  <v-main class="meme-main">
+    <div class="d-flex flex-column h-100">
+      <!-- ========== 插件设置 ========== -->
+      <template v-if="viewMode === 'settings'">
+        <header class="view-head px-6 py-4">
+          <div class="min-w-0">
+            <h2 class="text-h4 mb-1">插件设置</h2>
+            <p class="text-body-2 text-medium-emphasis mb-0">
+              与 AstrBot 原生插件配置页共用同一份数据，保存后即时生效，无需重启
+            </p>
+          </div>
+        </header>
+        <v-divider />
+
+        <div class="flex-grow-1 overflow-y-auto">
+          <div class="settings-body">
+            <SchemaForm
+              v-if="settingsLoaded"
+              v-model:model-value="settingsValues"
+              :schema="settingsSchema"
+            />
+            <div v-else class="d-flex justify-center py-12">
+              <v-progress-circular indeterminate />
+            </div>
           </div>
         </div>
-        <n-scrollbar class="settings-scroll">
-          <SchemaForm
-            v-if="settingsLoaded"
-            :schema="settingsSchema"
-            v-model:model-value="settingsValues"
-            :providers="settingsProviders"
-            class="settings-form"
-          />
-          <n-spin v-else style="margin-top: 40px" />
-        </n-scrollbar>
 
-        <!-- 悬浮保存按钮：仅存在草稿变更时浮出 -->
-        <Transition name="fab">
-          <n-button
-            v-if="settingsDirty"
-            class="save-fab"
-            type="primary"
-            round
-            size="large"
-            :loading="savingSettings"
-            @click="saveSettings"
-          >
-            <template #icon><Icon icon="lucide:save" /></template>
-            保存更改
-          </n-button>
-        </Transition>
-      </div>
+        <v-btn
+          v-if="settingsDirty"
+          class="save-fab"
+          color="primary"
+          variant="flat"
+          rounded="pill"
+          size="large"
+          elevation="6"
+          prepend-icon="lucide:save"
+          :loading="savingSettings"
+          @click="saveSettings"
+        >
+          保存更改
+        </v-btn>
+      </template>
 
-      <!-- 表情库视图 -->
-      <template v-else>
-      <div v-if="!selectedName" class="empty-state">
-        <n-empty description="从左侧选择一个表情分组查看变体" size="large">
-          <template #icon><Icon icon="lucide:sticker" class="empty-icon" /></template>
-        </n-empty>
-      </div>
+      <!-- ========== 表情库 ========== -->
+      <template v-else-if="!selectedName">
+        <v-empty-state
+          icon="lucide:sticker"
+          title="还没有选中表情"
+          text="从左侧选择一个表情分组查看变体"
+          class="h-100"
+        />
+      </template>
 
       <template v-else>
-        <div class="content-inner">
-          <div class="content-header">
-            <div class="content-title">
-              <h2>{{ selectedName }}</h2>
-              <n-tag round :bordered="false">{{ variantCount }} 个变体</n-tag>
-            </div>
-            <div class="content-actions" v-if="selecting">
-              <span class="select-count">已选 {{ selectedVariants.size }} 项</span>
-              <n-button @click="exitSelect">取消</n-button>
-              <n-popconfirm
+        <header class="view-head px-6 py-4">
+          <div class="d-flex align-center ga-3 min-w-0">
+            <h2 class="text-h4 mb-0 text-truncate">{{ selectedName }}</h2>
+            <v-chip size="small" variant="tonal" color="primary">{{ variantCount }} 个变体</v-chip>
+          </div>
+
+          <div class="view-actions d-flex align-center ga-2">
+            <template v-if="selecting">
+              <span class="text-caption text-medium-emphasis">已选 {{ selectedVariants.size }} 项</span>
+              <v-btn variant="text" @click="exitSelect">取消</v-btn>
+              <v-btn
+                color="error"
+                variant="flat"
                 :disabled="selectedVariants.size === 0"
-                @positive-click="batchDelete"
-                :positive-button-props="{ type: 'error' }"
-                positive-text="删除"
-                negative-text="取消"
+                @click="batchDelete"
               >
-                <template #trigger>
-                  <n-button
-                    type="error"
-                    :disabled="selectedVariants.size === 0"
-                  >
-                    删除选中
-                  </n-button>
-                </template>
-                确定删除选中的 {{ selectedVariants.size }} 个变体？
-              </n-popconfirm>
-            </div>
-            <div class="content-actions" v-else>
-              <n-button @click="enterSelect">
-                <template #icon><Icon icon="lucide:trash-2" /></template>
-                批量删除
-              </n-button>
-              <n-button @click="openRename(selectedName)">
-                <template #icon><Icon icon="lucide:pencil" /></template>
+                删除选中
+              </v-btn>
+            </template>
+            <template v-else>
+              <v-btn variant="text" prepend-icon="lucide:trash-2" @click="enterSelect">批量删除</v-btn>
+              <v-btn variant="text" prepend-icon="lucide:pencil" @click="openRename(selectedName)">
                 重命名
-              </n-button>
-              <n-popconfirm
-                @positive-click="deleteMeme(selectedName)"
-                :positive-button-props="{ type: 'error' }"
-                positive-text="删除"
-                negative-text="取消"
-              >
-                <template #trigger>
-                  <n-button type="error">删除分组</n-button>
-                </template>
-                确定删除「{{ selectedName }}」及其全部 {{ variantCount }} 个变体？
-              </n-popconfirm>
-              <n-button type="primary" @click="openVariantUpload">
-                <template #icon><Icon icon="lucide:upload" /></template>
+              </v-btn>
+              <v-btn variant="text" color="error" @click="confirmDeleteMeme(selectedName)">
+                删除分组
+              </v-btn>
+              <v-btn color="primary" variant="flat" prepend-icon="lucide:upload" @click="openVariantUpload">
                 添加变体
-              </n-button>
-            </div>
+              </v-btn>
+            </template>
+          </div>
+        </header>
+        <v-divider />
+
+        <div class="flex-grow-1 overflow-y-auto">
+          <div v-if="visibleVariants.length" class="variant-grid">
+            <v-card
+              v-for="v in visibleVariants"
+              :key="v.relative"
+              variant="outlined"
+              rounded="card"
+              class="variant-card"
+              :class="{ 'is-selected': isSelected(v.relative) }"
+              @click="onCardClick(v)"
+            >
+              <div class="variant-preview">
+                <img :src="imageUrl(v.relative)" :alt="v.file" loading="lazy" />
+              </div>
+              <v-divider />
+              <div class="variant-info px-3 py-2 d-flex align-center ga-2">
+                <span class="text-caption text-medium-emphasis text-truncate flex-grow-1" :title="v.file">
+                  {{ v.file }}
+                </span>
+                <v-icon
+                  v-if="selecting"
+                  :icon="isSelected(v.relative) ? 'lucide:circle-check' : 'lucide:circle'"
+                  :color="isSelected(v.relative) ? 'primary' : undefined"
+                  size="20"
+                />
+                <v-btn
+                  v-else
+                  icon="lucide:trash-2"
+                  variant="text"
+                  size="x-small"
+                  class="variant-del"
+                  aria-label="删除该变体"
+                  @click.stop="confirmDeleteVariant(v)"
+                />
+              </div>
+            </v-card>
           </div>
 
-          <n-scrollbar class="content-scroll">
-            <div class="variant-grid">
-              <div
-                v-for="v in visibleVariants"
-                :key="v.relative"
-                class="variant-card"
-                :class="{ 'is-selected': isSelected(v.relative) }"
-                @click="onCardClick(v.relative)"
-              >
-                <div class="variant-preview">
-                  <n-image
-                    :src="imageUrl(v.relative)"
-                    object-fit="contain"
-                    :fallback-src="fallbackImage"
-                    :preview-disabled="selecting"
-                  />
-                </div>
-                <div class="variant-info">
-                  <n-checkbox
-                    v-if="selecting"
-                    class="variant-checkbox"
-                    :checked="isSelected(v.relative)"
-                    @click.stop
-                    @update:checked="toggleSelect(v.relative)"
-                  />
-                  <span class="variant-name" :title="v.file">{{ v.file }}</span>
-                </div>
-              </div>
-              <n-empty
-                v-if="currentVariants.length === 0"
-                description="该分组没有变体"
-                class="grid-empty"
-              />
-            </div>
-          </n-scrollbar>
-        </div>
-      </template>
-      </template>
-    </n-layout-content>
+          <div
+            v-else-if="loadingImages"
+            class="d-flex justify-center py-12"
+          >
+            <v-progress-circular indeterminate />
+          </div>
 
-    <!-- 新增表情弹窗 -->
-    <n-modal v-model:show="showUpload" preset="card" title="新增表情" style="width: 420px">
-      <n-form label-placement="top">
-        <n-form-item label="表情名（贴纸名）">
-          <n-input v-model:value="uploadForm.emotion" placeholder="如：坏笑" />
-        </n-form-item>
-        <n-form-item label="图片文件">
-          <n-upload
-            :default-upload="false"
-            accept="image/*"
-            :show-file-list="true"
-            :max="1"
-            @change="onUploadChange"
-          >
-            <n-button>
-              <template #icon><Icon icon="lucide:upload" /></template>
-              选择图片
-            </n-button>
-          </n-upload>
-        </n-form-item>
-        <n-form-item v-if="uploadForm.previewUrl" label="预览">
-          <img :src="uploadForm.previewUrl" class="upload-preview" />
-        </n-form-item>
-      </n-form>
-      <template #footer>
-        <div class="modal-footer">
-          <n-button @click="showUpload = false">取消</n-button>
-          <n-button
-            type="primary"
-            :loading="uploading"
-            :disabled="!uploadForm.emotion || !uploadFile"
-            @click="submitUpload"
-          >
-            上传
-          </n-button>
+          <v-empty-state
+            v-else
+            icon="lucide:images"
+            title="该分组没有变体"
+            class="py-16"
+          />
         </div>
       </template>
-    </n-modal>
+    </div>
+  </v-main>
 
-    <!-- 添加变体弹窗 -->
-    <n-modal
-      v-model:show="showVariantUpload"
-      preset="card"
-      :title="`添加变体：${selectedName ?? ''}`"
-      style="width: 420px"
-    >
-      <n-form label-placement="top">
-        <n-form-item label="图片文件">
-          <n-upload
-            :default-upload="false"
-            accept="image/*"
-            :show-file-list="true"
-            :max="1"
-            @change="onVariantUploadChange"
-          >
-            <n-button>
-              <template #icon><Icon icon="lucide:upload" /></template>
-              选择图片
-            </n-button>
-          </n-upload>
-        </n-form-item>
-        <n-form-item v-if="variantForm.previewUrl" label="预览">
-          <img :src="variantForm.previewUrl" class="upload-preview" />
-        </n-form-item>
-      </n-form>
-      <template #footer>
-        <div class="modal-footer">
-          <n-button @click="showVariantUpload = false">取消</n-button>
-          <n-button
-            type="primary"
-            :loading="uploading"
-            :disabled="!variantForm.file"
-            @click="submitVariantUpload"
-          >
-            上传
-          </n-button>
-        </div>
-      </template>
-    </n-modal>
+  <!-- ========== 图片预览 ========== -->
+  <v-dialog v-model="showPreview" max-width="760">
+    <v-card rounded="card">
+      <div class="preview-stage">
+        <img :src="preview.src" :alt="preview.alt" />
+      </div>
+      <v-card-actions class="px-4 pb-3">
+        <span class="text-caption text-medium-emphasis flex-grow-1 text-truncate">{{ preview.alt }}</span>
+        <v-btn variant="text" @click="showPreview = false">关闭</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 
-    <!-- 重命名弹窗 -->
-    <n-modal v-model:show="showRename" preset="card" title="重命名表情" style="width: 420px">
-      <n-form label-placement="top">
-        <n-form-item label="原名称">
-          <n-input :value="renameForm.oldName" disabled />
-        </n-form-item>
-        <n-form-item label="新名称">
-          <n-input v-model:value="renameForm.newName" placeholder="输入新名字" />
-        </n-form-item>
-      </n-form>
-      <template #footer>
-        <div class="modal-footer">
-          <n-button @click="showRename = false">取消</n-button>
-          <n-button
-            type="primary"
-            :loading="renaming"
-            :disabled="!renameForm.newName || renameForm.newName === renameForm.oldName"
-            @click="submitRename"
-          >
-            确定
-          </n-button>
+  <!-- ========== 新增表情 ========== -->
+  <v-dialog v-model="showUpload" max-width="440" persistent>
+    <v-card rounded="card">
+      <v-card-title class="text-h6">新增表情</v-card-title>
+      <v-card-text>
+        <v-text-field
+          v-model="uploadForm.emotion"
+          label="表情名（贴纸名）"
+          placeholder="如：坏笑"
+          class="mb-4"
+        />
+        <v-file-input
+          v-model="uploadFileModel"
+          label="图片文件"
+          accept="image/*"
+          prepend-icon=""
+          prepend-inner-icon="lucide:image"
+          show-size
+          @update:model-value="onUploadChange"
+        />
+        <div v-if="uploadForm.previewUrl" class="upload-preview mt-3">
+          <img :src="uploadForm.previewUrl" alt="预览" />
         </div>
-      </template>
-    </n-modal>
-  </n-layout>
+      </v-card-text>
+      <v-card-actions class="px-4 pb-3">
+        <v-spacer />
+        <v-btn variant="text" @click="closeUpload">取消</v-btn>
+        <v-btn
+          color="primary"
+          variant="flat"
+          :loading="uploading"
+          :disabled="!uploadForm.emotion.trim() || !uploadFile"
+          @click="submitUpload"
+        >
+          上传
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+  <!-- ========== 添加变体 ========== -->
+  <v-dialog v-model="showVariantUpload" max-width="440" persistent>
+    <v-card rounded="card">
+      <v-card-title class="text-h6">添加变体：{{ selectedName ?? '' }}</v-card-title>
+      <v-card-text>
+        <v-file-input
+          v-model="variantFileModel"
+          label="图片文件"
+          accept="image/*"
+          prepend-icon=""
+          prepend-inner-icon="lucide:image"
+          show-size
+          @update:model-value="onVariantUploadChange"
+        />
+        <div v-if="variantForm.previewUrl" class="upload-preview mt-3">
+          <img :src="variantForm.previewUrl" alt="预览" />
+        </div>
+      </v-card-text>
+      <v-card-actions class="px-4 pb-3">
+        <v-spacer />
+        <v-btn variant="text" @click="closeVariantUpload">取消</v-btn>
+        <v-btn
+          color="primary"
+          variant="flat"
+          :loading="uploading"
+          :disabled="!variantForm.file"
+          @click="submitVariantUpload"
+        >
+          上传
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+  <!-- ========== 重命名 ========== -->
+  <v-dialog v-model="showRename" max-width="440" persistent>
+    <v-card rounded="card">
+      <v-card-title class="text-h6">重命名表情</v-card-title>
+      <v-card-text>
+        <v-text-field
+          :model-value="renameForm.oldName"
+          label="原名称"
+          readonly
+          variant="outlined"
+          class="mb-4"
+        />
+        <v-text-field
+          v-model="renameForm.newName"
+          label="新名称"
+          placeholder="输入新名字"
+          @keyup.enter="submitRename"
+        />
+      </v-card-text>
+      <v-card-actions class="px-4 pb-3">
+        <v-spacer />
+        <v-btn variant="text" @click="showRename = false">取消</v-btn>
+        <v-btn
+          color="primary"
+          variant="flat"
+          :loading="renaming"
+          :disabled="!renameForm.newName.trim() || renameForm.newName.trim() === renameForm.oldName"
+          @click="submitRename"
+        >
+          确定
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup lang="ts">
-import { computed, h, inject, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import {
-  NButton,
-  NCard,
-  NCheckbox,
-  NEmpty,
-  NForm,
-  NFormItem,
-  NImage,
-  NInput,
-  NLayout,
-  NLayoutContent,
-  NLayoutSider,
-  NMenu,
-  NModal,
-  NPopconfirm,
-  NScrollbar,
-  NTag,
-  NTooltip,
-  NUpload,
-  useMessage,
-  useThemeVars,
-} from 'naive-ui'
-import { Icon } from '@iconify/vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useBridge } from './composables/useBridge'
-import { themeKey } from './theme'
+import { toast } from './composables/useToast'
+import { confirmDialog } from './composables/useConfirm'
 import SchemaForm from './SchemaForm.vue'
 import type { SchemaMeta } from './schema'
 
@@ -349,12 +366,9 @@ interface MemeItem {
   variants: MemeVariant[]
 }
 
-const PLUGIN_NAME = 'astrbot_plugin_angel_smile'
-
-const message = useMessage()
-const themeVars = useThemeVars()
 const { apiGet, apiPost, upload } = useBridge()
 
+/** 表情名 → 路径安全的 token（UTF-8 → base64url） */
 function emotionToken(name: string): string {
   const bytes = new TextEncoder().encode(name)
   let bin = ''
@@ -363,58 +377,33 @@ function emotionToken(name: string): string {
   })
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
-const theme = inject(themeKey)!
-const { isDark, toggle: toggleTheme } = theme
 
-// Naive UI 的主题变量只挂在组件自己的根节点上，自定义类里用到的
-// var(--n-*) 需要在这里显式注入到根容器，否则解析失败。
-const cssVars = computed(() => {
-  const v = themeVars.value
-  return {
-    '--n-body-color': v.bodyColor,
-    '--n-card-color': v.cardColor,
-    '--n-color-1': v.bodyColor,
-    '--n-color-2': v.cardColor,
-    '--n-text-color-1': v.textColor1,
-    '--n-text-color-2': v.textColor2,
-    '--n-text-color-3': v.textColor3,
-    '--n-divider-color': v.dividerColor,
-    '--n-border-color': v.borderColor,
-    '--n-primary-color': v.primaryColor,
-    '--n-primary-color-1': v.primaryColorSuppl,
-    '--n-primary-color-soft': `${v.primaryColor}1f`,
-  }
-})
+// ---------- 侧栏折叠 ----------
 
-// 图片缺失占位图随主题切换底色
-const fallbackImage = computed(() => {
-  const bg = isDark.value ? '#2c2c2e' : '#e5e5ea'
-  const fg = isDark.value ? '#98989d' : '#8e8e93'
-  return (
-    'data:image/svg+xml;utf8,' +
-    encodeURIComponent(
-      "<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'>" +
-        `<rect width='100%' height='100%' fill='${bg}'/>` +
-        `<text x='50%' y='50%' fill='${fg}' font-size='14' text-anchor='middle' dominant-baseline='middle'>图片缺失</text>` +
-        '</svg>',
-    )
-  )
-})
+const rail = ref(false)
+// 用户手动折叠/展开后，不再让宽度变化覆盖他的选择
+let railTouched = false
+// 用 ResizeObserver 而不是只读一次 matchMedia：iframe 的视口宽度在文档
+// 首次布局前后会变，只在 onMounted 读一次会把 240px 侧栏误判成窄屏。
+let widthObserver: ResizeObserver | null = null
 
-const memes = ref<MemeItem[]>([])
-const selectedName = ref<string | null>(null)
-const collapsed = ref(false)
-// naive-ui 的 n-layout-sider 没有 breakpoint 属性，用 matchMedia 实现窄屏自动收起
-const narrowMql = window.matchMedia('(max-width: 768px)')
-const syncSidebarToWidth = () => {
-  collapsed.value = narrowMql.matches
+function toggleRail() {
+  railTouched = true
+  rail.value = !rail.value
 }
+
 onMounted(() => {
-  syncSidebarToWidth()
-  narrowMql.addEventListener('change', syncSidebarToWidth)
+  if (typeof ResizeObserver === 'undefined') return
+  widthObserver = new ResizeObserver((entries) => {
+    if (railTouched) return
+    const width = entries[0]?.contentRect.width ?? window.innerWidth
+    rail.value = width <= 900
+  })
+  widthObserver.observe(document.documentElement)
 })
 onUnmounted(() => {
-  narrowMql.removeEventListener('change', syncSidebarToWidth)
+  widthObserver?.disconnect()
+  widthObserver = null
 })
 
 // ---------- 视图切换（表情库 / 插件设置） ----------
@@ -424,15 +413,12 @@ const viewMode = ref<ViewMode>('memes')
 
 const settingsSchema = ref<Record<string, SchemaMeta>>({})
 const settingsValues = ref<Record<string, unknown>>({})
-const settingsProviders = ref<Record<string, string[]>>({})
 const settingsLoaded = ref(false)
 const savingSettings = ref(false)
 // 草稿基线：与当前值不一致即有变更，浮出保存按钮
 const settingsBaseline = ref('')
 const settingsDirty = computed(
-  () =>
-    settingsLoaded.value &&
-    JSON.stringify(settingsValues.value) !== settingsBaseline.value,
+  () => settingsLoaded.value && JSON.stringify(settingsValues.value) !== settingsBaseline.value,
 )
 
 function openSettings() {
@@ -451,7 +437,7 @@ async function loadPluginConfig() {
     settingsBaseline.value = JSON.stringify(settingsValues.value)
     settingsLoaded.value = true
   } catch (e) {
-    message.error(`加载插件设置失败: ${(e as Error).message}`)
+    toast.error(`加载插件设置失败: ${(e as Error).message}`)
   }
 }
 
@@ -460,65 +446,126 @@ async function saveSettings() {
   try {
     await apiPost('plugin_config/save', { values: settingsValues.value })
     settingsBaseline.value = JSON.stringify(settingsValues.value)
-    message.success('已保存并即时生效')
+    toast.success('已保存并即时生效')
   } catch (e) {
-    message.error(`保存失败: ${(e as Error).message}`)
+    toast.error(`保存失败: ${(e as Error).message}`)
   } finally {
     savingSettings.value = false
   }
 }
 
-const showUpload = ref(false)
-const showVariantUpload = ref(false)
-const uploading = ref(false)
-const uploadFile = ref<File | null>(null)
-const uploadForm = reactive({ emotion: '', previewUrl: '' })
-const variantForm = reactive<{ file: File | null; previewUrl: string }>({
-  file: null,
-  previewUrl: '',
-})
+// ---------- 表情列表 ----------
 
-const showRename = ref(false)
-const renaming = ref(false)
-const renameForm = reactive({ oldName: '', newName: '' })
+const memes = ref<MemeItem[]>([])
+const selectedName = ref<string | null>(null)
+const loadingMemes = ref(false)
 
-const currentMeme = computed(() =>
-  memes.value.find((m) => m.name === selectedName.value) ?? null,
-)
-
+const currentMeme = computed(() => memes.value.find((m) => m.name === selectedName.value) ?? null)
 const currentVariants = computed(() => currentMeme.value?.variants ?? [])
-
 const variantCount = computed(() => currentVariants.value.length)
-
-// 左侧导航：NMenu，名称 + 变体数标签
-const menuOptions = computed(() =>
-  memes.value.map((m) => ({
-    key: m.name,
-    icon: () => h(Icon, { icon: 'lucide:sticker' }),
-    label: () =>
-      h('div', { class: 'menu-label' }, [
-        h('span', { class: 'menu-name' }, m.name),
-        h(
-          NTag,
-          { size: 'small', round: true, bordered: false },
-          { default: () => `${m.variants.length}` },
-        ),
-      ]),
-  })),
-)
-
-const settingsMenuOptions = [
-  {
-    label: '插件设置',
-    key: 'settings',
-    icon: () => h(Icon, { icon: 'lucide:settings' }),
-  },
-]
 
 function selectMeme(name: string) {
   if (selecting.value) exitSelect()
   viewMode.value = 'memes'
   selectedName.value = name
+}
+
+async function loadMemes() {
+  loadingMemes.value = true
+  try {
+    const data = await apiGet<MemeItem[]>('memes')
+    memes.value = data ?? []
+    if (selectedName.value && !memes.value.some((m) => m.name === selectedName.value)) {
+      selectedName.value = null
+    }
+  } catch (e) {
+    toast.error(`加载失败: ${(e as Error).message}`)
+  } finally {
+    loadingMemes.value = false
+  }
+}
+
+// ---------- 图片：走 b64 接口拿 data URL ----------
+// 原生 <img src="/api/plug/..."> 不带 Authorization header，Secure cookie 在 HTTP 下
+// 不发送会 401 裂图，所以统一走 bridge apiGet（宿主 axios 带 token）取 base64。
+
+const imageSrcMap = reactive<Record<string, string>>({})
+const readySet = reactive(new Set<string>())
+const loadingImages = ref(false)
+
+function imageUrl(relative: string): string {
+  return imageSrcMap[relative] ?? ''
+}
+
+// 图片就绪才让卡片入列；网格按 currentVariants 原顺序过滤，顺序天然稳定
+const visibleVariants = computed(() => currentVariants.value.filter((v) => readySet.has(v.relative)))
+
+const IMAGE_CONCURRENCY = 16
+let loadGeneration = 0
+
+async function loadVariantImages(memeName: string | null) {
+  const gen = ++loadGeneration
+  readySet.clear()
+  if (!memeName) {
+    loadingImages.value = false
+    return
+  }
+  const meme = memes.value.find((m) => m.name === memeName)
+  if (!meme) {
+    loadingImages.value = false
+    return
+  }
+
+  // 已有缓存的立即可见，其余并发加载（限流 16）
+  for (const v of meme.variants) {
+    if (imageSrcMap[v.relative]) readySet.add(v.relative)
+  }
+  const pending = meme.variants.filter((v) => !imageSrcMap[v.relative])
+  if (!pending.length) {
+    loadingImages.value = false
+    return
+  }
+
+  loadingImages.value = true
+  let cursor = 0
+  const worker = async () => {
+    while (cursor < pending.length) {
+      // 快速切换分组时丢弃过期任务
+      if (gen !== loadGeneration) return
+      const v = pending[cursor++]
+      try {
+        const data = await apiGet<{ data_url?: string }>('memes/image/b64', { path: v.relative })
+        if (gen !== loadGeneration) return
+        if (data?.data_url) {
+          imageSrcMap[v.relative] = data.data_url
+          readySet.add(v.relative)
+        }
+      } catch (e) {
+        console.warn(`[MemeManage] 图片加载失败: ${v.relative}`, e)
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(IMAGE_CONCURRENCY, pending.length) }, () => worker()),
+  )
+  if (gen === loadGeneration) loadingImages.value = false
+}
+
+watch(selectedName, (name) => {
+  void loadVariantImages(name)
+})
+
+// ---------- 图片预览 ----------
+
+const showPreview = ref(false)
+const preview = reactive({ src: '', alt: '' })
+
+function openPreview(v: MemeVariant) {
+  preview.src = imageSrcMap[v.relative] ?? ''
+  preview.alt = v.file
+  if (!preview.src) return
+  showPreview.value = true
 }
 
 // ---------- 批量删除（多选） ----------
@@ -537,133 +584,108 @@ function exitSelect() {
 }
 
 function toggleSelect(rel: string) {
-  if (selectedVariants.has(rel)) {
-    selectedVariants.delete(rel)
-  } else {
-    selectedVariants.add(rel)
-  }
+  if (selectedVariants.has(rel)) selectedVariants.delete(rel)
+  else selectedVariants.add(rel)
 }
 
 function isSelected(rel: string): boolean {
   return selectedVariants.has(rel)
 }
 
-function onCardClick(rel: string) {
-  if (selecting.value) toggleSelect(rel)
+function onCardClick(v: MemeVariant) {
+  if (selecting.value) toggleSelect(v.relative)
+  else openPreview(v)
 }
 
 async function batchDelete() {
   if (!selectedName.value || selectedVariants.size === 0) return
+  const count = selectedVariants.size
+  const ok = await confirmDialog({
+    title: '批量删除变体',
+    text: `确定删除选中的 ${count} 个变体？删完若该分组没有变体，分组会一并移除。`,
+    confirmText: '删除',
+    danger: true,
+  })
+  if (!ok) return
   try {
     await apiPost('memes/variant/batch_delete', {
       name: selectedName.value,
       relatives: [...selectedVariants],
     })
-    message.success(`已删除 ${selectedVariants.size} 个变体`)
+    toast.success(`已删除 ${count} 个变体`)
     exitSelect()
     await loadMemes()
   } catch (e) {
-    message.error(`删除失败: ${(e as Error).message}`)
+    toast.error(`删除失败: ${(e as Error).message}`)
   }
 }
 
-// 变体图片 data URL 缓存：relative -> data:image/...;base64,...
-// 原生 <img src="/api/plug/..."> 不带 Authorization header，Secure cookie 在
-// HTTP 下不发送会 401 裂图；改走 bridge apiGet（宿主 axios 带 token）获取 base64。
-const imageSrcMap = reactive<Record<string, string>>({})
-
-function imageUrl(relative: string): string {
-  return imageSrcMap[relative] ?? ''
-}
-
-// 图片就绪才让卡片入列；网格按 currentVariants 原顺序过滤，顺序天然稳定
-const readySet = reactive(new Set<string>())
-
-const visibleVariants = computed(() =>
-  currentVariants.value.filter((v) => readySet.has(v.relative)),
-)
-
-const IMAGE_CONCURRENCY = 16
-
-let loadGeneration = 0
-
-async function loadVariantImages(memeName: string | null) {
-  const gen = ++loadGeneration
-  readySet.clear()
-  if (!memeName) return
-  const meme = memes.value.find((m) => m.name === memeName)
-  if (!meme) return
-
-  // 已有缓存的立即可见，其余并发加载（限流 16）
-  for (const v of meme.variants) {
-    if (imageSrcMap[v.relative]) readySet.add(v.relative)
-  }
-  const pending = meme.variants.filter((v) => !imageSrcMap[v.relative])
-
-  let cursor = 0
-  const worker = async () => {
-    while (cursor < pending.length) {
-      // 快速切换分组时丢弃过期任务
-      if (gen !== loadGeneration) return
-      const v = pending[cursor++]
-      try {
-        const data = await apiGet<{ data_url?: string }>('memes/image/b64', {
-          path: v.relative,
-        })
-        if (gen !== loadGeneration) return
-        if (data?.data_url) {
-          imageSrcMap[v.relative] = data.data_url
-          readySet.add(v.relative)
-        }
-      } catch (e) {
-        console.warn(`[MemeManage] 图片加载失败: ${v.relative}`, e)
-      }
-    }
-  }
-
-  await Promise.all(
-    Array.from({ length: Math.min(IMAGE_CONCURRENCY, pending.length) }, () => worker()),
-  )
-}
-
-watch(selectedName, (name) => {
-  void loadVariantImages(name)
-})
-
-async function loadMemes() {
+async function confirmDeleteVariant(v: MemeVariant) {
+  if (!selectedName.value) return
+  const ok = await confirmDialog({
+    title: '删除变体',
+    text: `确定删除变体「${v.file}」？删完若该分组没有变体，分组会一并移除。`,
+    confirmText: '删除',
+    danger: true,
+  })
+  if (!ok) return
   try {
-    const data = await apiGet<MemeItem[]>('memes')
-    memes.value = data ?? []
-    if (selectedName.value && !memes.value.some((m) => m.name === selectedName.value)) {
-      selectedName.value = null
-    }
+    await apiPost('memes/variant/delete', { name: selectedName.value, relative: v.relative })
+    toast.success('已删除该变体')
+    delete imageSrcMap[v.relative]
+    readySet.delete(v.relative)
+    await loadMemes()
+    await loadVariantImages(selectedName.value)
   } catch (e) {
-    message.error(`加载失败: ${(e as Error).message}`)
+    toast.error(`删除失败: ${(e as Error).message}`)
   }
 }
 
 // ---------- 上传（新增表情） ----------
 
+const showUpload = ref(false)
+const uploading = ref(false)
+const uploadFile = ref<File | null>(null)
+const uploadFileModel = ref<File | File[] | null>(null)
+const uploadForm = reactive({ emotion: '', previewUrl: '' })
+
+function pickSingleFile(value: File | File[] | null | undefined): File | null {
+  if (!value) return null
+  return Array.isArray(value) ? (value[0] ?? null) : value
+}
+
+function revokePreview(target: { previewUrl: string }) {
+  if (target.previewUrl) URL.revokeObjectURL(target.previewUrl)
+  target.previewUrl = ''
+}
+
 function openUpload() {
   uploadForm.emotion = ''
-  uploadForm.previewUrl = ''
+  revokePreview(uploadForm)
   uploadFile.value = null
+  uploadFileModel.value = null
   showUpload.value = true
 }
 
-function onUploadChange(options: { file: { file?: File | null } }) {
-  const f = options.file.file
-  uploadFile.value = f ?? null
-  if (f) {
-    uploadForm.previewUrl = URL.createObjectURL(f)
-  }
+function closeUpload() {
+  showUpload.value = false
+  revokePreview(uploadForm)
+  uploadFile.value = null
+  uploadFileModel.value = null
+}
+
+function onUploadChange(value: File | File[] | null) {
+  const file = pickSingleFile(value)
+  uploadFile.value = file
+  revokePreview(uploadForm)
+  if (file) uploadForm.previewUrl = URL.createObjectURL(file)
 }
 
 async function submitUpload() {
   if (!uploadFile.value) return
   const emotion = uploadForm.emotion.trim()
   if (!emotion) {
-    message.warning('先给表情起个名字')
+    toast.warning('先给表情起个名字')
     return
   }
   uploading.value = true
@@ -672,16 +694,13 @@ async function submitUpload() {
       `memes/upload/${emotionToken(emotion)}`,
       uploadFile.value,
     )
-    if (result?.duplicate) {
-      message.warning('这个表情包已经收过了')
-    } else {
-      message.success('上传成功')
-    }
-    showUpload.value = false
+    if (result?.duplicate) toast.warning('这个表情包已经收过了')
+    else toast.success('上传成功')
+    closeUpload()
     await loadMemes()
     selectedName.value = emotion
   } catch (e) {
-    message.error(`上传失败: ${(e as Error).message}`)
+    toast.error(`上传失败: ${(e as Error).message}`)
   } finally {
     uploading.value = false
   }
@@ -689,18 +708,32 @@ async function submitUpload() {
 
 // ---------- 上传（添加变体） ----------
 
+const showVariantUpload = ref(false)
+const variantFileModel = ref<File | File[] | null>(null)
+const variantForm = reactive<{ file: File | null; previewUrl: string }>({
+  file: null,
+  previewUrl: '',
+})
+
 function openVariantUpload() {
   variantForm.file = null
-  variantForm.previewUrl = ''
+  variantFileModel.value = null
+  revokePreview(variantForm)
   showVariantUpload.value = true
 }
 
-function onVariantUploadChange(options: { file: { file?: File | null } }) {
-  const f = options.file.file
-  variantForm.file = f ?? null
-  if (f) {
-    variantForm.previewUrl = URL.createObjectURL(f)
-  }
+function closeVariantUpload() {
+  showVariantUpload.value = false
+  revokePreview(variantForm)
+  variantForm.file = null
+  variantFileModel.value = null
+}
+
+function onVariantUploadChange(value: File | File[] | null) {
+  const file = pickSingleFile(value)
+  variantForm.file = file
+  revokePreview(variantForm)
+  if (file) variantForm.previewUrl = URL.createObjectURL(file)
 }
 
 async function submitVariantUpload() {
@@ -712,15 +745,13 @@ async function submitVariantUpload() {
       `memes/upload/${emotionToken(name)}`,
       variantForm.file,
     )
-    if (result?.duplicate) {
-      message.warning('这个表情包已经收过了')
-    } else {
-      message.success('变体已添加')
-    }
-    showVariantUpload.value = false
+    if (result?.duplicate) toast.warning('这个表情包已经收过了')
+    else toast.success('变体已添加')
+    closeVariantUpload()
     await loadMemes()
+    await loadVariantImages(name)
   } catch (e) {
-    message.error(`上传失败: ${(e as Error).message}`)
+    toast.error(`上传失败: ${(e as Error).message}`)
   } finally {
     uploading.value = false
   }
@@ -728,7 +759,12 @@ async function submitVariantUpload() {
 
 // ---------- 重命名 ----------
 
-function openRename(name: string) {
+const showRename = ref(false)
+const renaming = ref(false)
+const renameForm = reactive({ oldName: '', newName: '' })
+
+function openRename(name: string | null) {
+  if (!name) return
   const meme = memes.value.find((m) => m.name === name)
   if (!meme) return
   renameForm.oldName = meme.name
@@ -737,35 +773,41 @@ function openRename(name: string) {
 }
 
 async function submitRename() {
+  const next = renameForm.newName.trim()
+  if (!next || next === renameForm.oldName) return
   renaming.value = true
   try {
-    await apiPost('memes/rename', {
-      old_name: renameForm.oldName,
-      new_name: renameForm.newName.trim(),
-    })
-    message.success('重命名成功')
+    await apiPost('memes/rename', { old_name: renameForm.oldName, new_name: next })
+    toast.success('重命名成功')
     showRename.value = false
-    if (selectedName.value === renameForm.oldName) {
-      selectedName.value = renameForm.newName.trim()
-    }
+    if (selectedName.value === renameForm.oldName) selectedName.value = next
     await loadMemes()
+    await loadVariantImages(next)
   } catch (e) {
-    message.error(`重命名失败: ${(e as Error).message}`)
+    toast.error(`重命名失败: ${(e as Error).message}`)
   } finally {
     renaming.value = false
   }
 }
 
-// ---------- 删除 ----------
+// ---------- 删除分组 ----------
 
-async function deleteMeme(name: string) {
+async function confirmDeleteMeme(name: string | null) {
+  if (!name) return
+  const ok = await confirmDialog({
+    title: '删除分组',
+    text: `确定删除「${name}」及其全部 ${variantCount.value} 个变体？`,
+    confirmText: '删除',
+    danger: true,
+  })
+  if (!ok) return
   try {
     await apiPost('memes/delete', { name })
-    message.success(`已删除 ${name}`)
+    toast.success(`已删除 ${name}`)
     if (selectedName.value === name) selectedName.value = null
     await loadMemes()
   } catch (e) {
-    message.error(`删除失败: ${(e as Error).message}`)
+    toast.error(`删除失败: ${(e as Error).message}`)
   }
 }
 
@@ -777,322 +819,124 @@ onMounted(async () => {
 })
 </script>
 
-<style>
-.layout {
-  height: 100vh;
+<style scoped>
+.meme-drawer {
+  border-inline-end: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  /* drawer 默认吃 surface；侧栏必须跟页面同 background，卡片才配浮出 */
+  background-color: rgb(var(--v-theme-background)) !important;
+}
+/* v-list 默认吃 surface；侧栏里的列表必须透明，否则菜单区比空白亮一档 */
+.v-application .meme-drawer .v-list {
+  background-color: transparent !important;
 }
 
-/* 侧栏面板：近实色底 + 分隔边框 */
-.glass-sider {
-  background: var(--glass-thick-bg);
-  border-right: 1px solid var(--glass-divider);
-}
-
-.sidebar-inner {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--glass-divider);
-}
-
-.brand {
-  flex: 1;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--n-text-color-1);
-}
-
-/* 左上角主题切换：胶囊圆钮 */
-.theme-toggle {
-  flex-shrink: 0;
-  width: 34px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
+/* 折叠到 56px 时列表项只剩名称首字，需要居中 */
+.meme-drawer.v-navigation-drawer--rail :deep(.v-list-item) {
+  padding-inline: 0;
   justify-content: center;
-  font-size: 16px;
-  color: inherit;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-full);
-  background: var(--glass-regular-bg);
-  box-shadow:
-    inset 0 1px 0 var(--glass-highlight),
-    var(--glass-shadow);
-  cursor: pointer;
-  transition: transform 0.15s ease, background 0.2s ease;
 }
 
-.theme-toggle:hover {
-  transform: scale(1.06);
-}
-
-.theme-toggle:active {
-  transform: scale(0.94);
-}
-
-/* 折叠态：56px 宽度放不下横排双按钮，转纵向并收窄内边距 */
-.sidebar-inner.is-collapsed .sidebar-header {
-  flex-direction: column;
-  padding: 10px 8px;
-}
-
-.sidebar-scroll {
-  flex: 1;
-  min-height: 0;
-}
-
-.menu-label {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.menu-name {
-  flex: 1;
+.meme-main {
+  height: 100vh;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.sidebar-footer {
-  border-top: 1px solid var(--glass-divider);
-}
-
-/* ---------- 插件设置视图 ---------- */
-
-.settings-wrap {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.settings-header {
+/* 标题与操作区：窄宽度下换行，不让按钮被挤出可点区域 */
+.view-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 20px 28px 12px;
-  border-bottom: 1px solid var(--glass-divider);
+  gap: 12px 20px;
+  flex-wrap: wrap;
 }
 
-.settings-header h2 {
-  margin: 0;
-  font-size: 16px;
-  color: var(--n-text-color-1);
+.view-head > .view-actions {
+  flex-wrap: wrap;
 }
 
-.settings-sub {
-  font-size: 12px;
-  color: var(--n-text-color-3);
-}
-
-.settings-scroll {
-  flex: 1;
-  min-height: 0;
-}
-
-.settings-form {
-  max-width: 800px;
+.settings-body {
+  max-width: 860px;
   margin: 0 auto;
-  padding: 20px 28px 120px;
+  padding: 24px 24px 120px;
 }
 
-/* 悬浮保存按钮：右下角浮出 */
 .save-fab {
   position: fixed;
   right: 28px;
   bottom: 28px;
-  z-index: 100;
-  box-shadow: var(--glass-shadow);
-}
-
-.fab-enter-active,
-.fab-leave-active {
-  transition: opacity 0.25s ease, transform 0.25s ease;
-}
-
-.fab-enter-from,
-.fab-leave-to {
-  opacity: 0;
-  transform: translateY(14px) scale(0.92);
-}
-
-.content {
-  height: 100%;
-}
-
-.content-inner {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.content-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 28px 12px;
-  border-bottom: 1px solid var(--glass-divider);
-}
-
-.content-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.content-title h2 {
-  font-size: 16px;
-  margin: 0;
-  color: var(--n-text-color-1);
-}
-
-.content-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.select-count {
-  font-size: 12px;
-  color: var(--n-text-color-2);
-}
-
-.content-scroll {
-  flex: 1;
-  min-height: 0;
+  z-index: 6;
 }
 
 .variant-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 12px;
-  padding: 20px 28px;
+  padding: 20px 24px 32px;
 }
 
-/* 内容卡片：近实色底；图片就绪入列时播进入动画 */
 .variant-card {
-  position: relative;
-  background: var(--glass-thick-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-md);
+  cursor: pointer;
+  /* 圆角直接裁切图片，不留白边 */
   overflow: hidden;
-  box-shadow: inset 0 1px 0 var(--glass-highlight);
-  transition: border-color 0.2s, transform 0.15s ease, box-shadow 0.2s;
-  animation: card-in 0.4s cubic-bezier(0.34, 0.7, 0.3, 1) both;
-}
-
-@keyframes card-in {
-  from {
-    opacity: 0;
-    transform: translateY(14px) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
 .variant-card:hover {
-  border-color: var(--n-primary-color);
-  box-shadow:
-    inset 0 1px 0 var(--glass-highlight),
-    var(--glass-shadow);
+  border-color: rgb(var(--v-theme-primary));
 }
 
 .variant-card.is-selected {
-  border-color: var(--n-primary-color);
-  background: var(--n-primary-color-soft);
-  box-shadow: 0 0 0 1px var(--n-primary-color) inset;
-}
-
-.variant-card.is-selected .variant-preview {
-  background: var(--n-primary-color-soft);
-}
-
-.variant-checkbox {
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  z-index: 1;
+  border-color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.06);
 }
 
 .variant-preview {
   aspect-ratio: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
   overflow: hidden;
 }
 
-/* NImage 的 img 无类名，直接后代选择器约束尺寸 */
+/* 图片铺满整个预览区，多出的部分由卡片圆角裁掉 */
 .variant-preview img {
+  display: block;
   width: 100%;
   height: 100%;
+  object-fit: cover;
+}
+
+.variant-del {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+}
+
+.variant-card:hover .variant-del {
+  color: rgb(var(--v-theme-error));
+}
+
+.preview-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  max-height: 70vh;
+  overflow: auto;
+  background: rgba(var(--v-theme-on-surface), 0.03);
+}
+
+.preview-stage img {
+  max-width: 100%;
+  max-height: 66vh;
   object-fit: contain;
-}
-
-.variant-info {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 8px 10px;
-}
-
-.variant-name {
-  min-width: 0;
-  font-size: 12px;
-  color: var(--n-text-color-2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.grid-empty {
-  grid-column: 1 / -1;
-  margin-top: 40px;
-}
-
-.empty-state {
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.empty-icon {
-  font-size: 48px;
-  opacity: 0.4;
-  color: var(--n-text-color-3);
 }
 
 .upload-preview {
-  max-width: 100%;
-  max-height: 200px;
-  object-fit: contain;
-  border-radius: var(--radius-sm);
-}
-
-.modal-footer {
   display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+  justify-content: center;
 }
 
-/* 图片放大预览遮罩：走 naive-ui 默认效果 */
-
-/* 弹窗卡片：大圆角 */
-.n-card,
-.n-modal {
-  border-radius: var(--radius-lg);
+.upload-preview img {
+  max-width: 100%;
+  max-height: 180px;
+  object-fit: contain;
+  border-radius: 12px;
 }
 </style>

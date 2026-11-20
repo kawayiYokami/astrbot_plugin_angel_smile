@@ -21,9 +21,12 @@ from .tools.steal_meme import MemeIngestTool
     "2.3.4",
 )
 class AngelSmilePlugin(Star):
-    def __init__(self, context: Context):
+    def __init__(self, context: Context, config: dict | None = None):
         super().__init__(context)
-        self.config = context.get_config()
+        # 插件自身配置（AstrBotConfig，dict 子类，带 schema）。
+        # 由框架通过 config 参数注入；context.get_config() 返回的是全局
+        # AstrBot 配置，不能用于插件配置。
+        self.config = config if isinstance(config, dict) else {}
 
         plugin_dir = Path(__file__).resolve().parent
         data_dir = Path(StarTools.get_data_dir())
