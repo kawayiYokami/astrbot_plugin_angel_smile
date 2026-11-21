@@ -1,6 +1,7 @@
 import os
 import sys
 import types
+from enum import Enum
 
 
 class _FakeLogger:
@@ -62,8 +63,31 @@ def install_fake_astrbot() -> None:
         def fromFileSystem(cls, path: str):
             return cls(path)
 
+    class ComponentType(str, Enum):
+        Image = "Image"
+
+    class BaseMessageComponent:
+        """Minimal stand-in for the framework base component."""
+
+        def __init__(self, **kwargs):
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+
+        def toDict(self):
+            data = {}
+            for key, value in self.__dict__.items():
+                if key == "type" or value is None:
+                    continue
+                data[key] = value
+            return {"type": str(self.type).lower(), "data": data}
+
+        async def to_dict(self):
+            return self.toDict()
+
     components_module.Plain = Plain
     components_module.Image = Image
+    components_module.ComponentType = ComponentType
+    components_module.BaseMessageComponent = BaseMessageComponent
 
     path_module.get_astrbot_data_path = get_astrbot_data_path
     io_module.download_image_by_url = download_image_by_url

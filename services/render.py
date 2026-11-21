@@ -1,12 +1,77 @@
 """StickerRenderer: resolves :meme_name: tokens in LLM output to images."""
 
+import asyncio
+import base64
 import re
+from pathlib import Path
 from typing import List
 
 from astrbot.api import logger
-from astrbot.core.message.components import Image, Plain
+from astrbot.core.message.components import (
+    BaseMessageComponent,
+    ComponentType,
+    Image,
+    Plain,
+)
 
 from ..utils import stable_select
+
+
+class StickerImage(BaseMessageComponent):
+    """以 OneBot 表情样式（image 段 sub_type=1）发送的图片段。
+
+    刻意不继承 Image：aiocqhttp 发送侧的 _from_segment_to_dict 对 Image 走
+    base64 硬编码分支，sub_type / summary 会被丢弃；非 Image 类型则落到
+    segment.toDict() 兜底，原样透传给协议端。
+
+    file 必须在构造前就备成 base64:// 或可访问 URL——兜底调用的是同步
+    toDict()，里面不能 await。
+    """
+
+    type: ComponentType = ComponentType.Image
+    file: str = ""
+    sub_type: int = 1
+    summary: str = "[动画表情]"
+
+    def toDict(self) -> dict:
+        return {
+            "type": "image",
+            "data": {
+                "file": self.file,
+                "sub_type": self.sub_type,
+                "summary": self.summary,
+            },
+        }
+
+
+def register_sticker_component() -> bool:
+    """把 StickerImage 登记进框架的空消息校验表。
+
+    RespondStage._is_empty_message_chain 用 type(comp) 精确匹配组件类来判断
+    消息是否为空；StickerImage 不在表里会被整条丢弃（日志：
+    "The message is empty; skipping the respond stage."）。
+
+    Returns:
+        True 表示注册成功，可以按表情样式发送。
+    """
+    try:
+        from astrbot.core.pipeline.respond.stage import RespondStage
+
+        RespondStage._component_validators[StickerImage] = lambda comp: bool(comp.file)
+        return True
+    except Exception as exc:  # pragma: no cover - 依赖框架内部结构
+        logger.warning(f"AngelSmile: 注册表情组件校验器失败，退回普通图片: {exc}")
+        return False
+
+
+def unregister_sticker_component() -> None:
+    """撤销 register_sticker_component 的注册。"""
+    try:
+        from astrbot.core.pipeline.respond.stage import RespondStage
+
+        RespondStage._component_validators.pop(StickerImage, None)
+    except Exception:  # pragma: no cover - 框架结构变化时静默
+        pass
 
 
 class StickerRenderer:
@@ -52,10 +117,31 @@ class StickerRenderer:
             "参数：emotion 为贴纸名，path 为图片路径。"
         )
 
-    async def render_text(self, text: str, message_id: str = "") -> List:
+    async def _build_image(self, path: Path, sticker_style: bool):
+        """构造贴纸组件。
+
+        sticker_style 为 True 时走 OneBot 表情样式（image 段 sub_type=1），
+        否则维持普通图片。读取失败时退回普通图片，不拖垮整条回复。
+        """
+        if not sticker_style:
+            return Image.fromFileSystem(str(path))
+        try:
+            raw = await asyncio.to_thread(path.read_bytes)
+        except OSError as exc:
+            logger.warning(f"AngelSmile: 读取贴纸失败，退回普通图片 {path}: {exc}")
+            return Image.fromFileSystem(str(path))
+        return StickerImage(file=f"base64://{base64.b64encode(raw).decode()}")
+
+    async def render_text(
+        self, text: str, message_id: str = "", sticker_style: bool = False
+    ) -> List:
         """Replace :meme_name: tokens with Image components.
 
         Uses stable_select for deterministic variant choice.
+
+        Args:
+            sticker_style: True 时贴纸按 OneBot 表情样式发送（仅 aiocqhttp
+                平台有意义），否则发送普通图片。
         """
         components: List = []
         try:
@@ -77,7 +163,7 @@ class StickerRenderer:
                 variants = index.get(meme_name, [])
                 if variants:
                     selected = stable_select(variants, message_id, meme_name, token_counter)
-                    components.append(Image.fromFileSystem(str(selected)))
+                    components.append(await self._build_image(selected, sticker_style))
                 else:
                     components.append(Plain(match.group(0)))
 

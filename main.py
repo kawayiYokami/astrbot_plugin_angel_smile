@@ -9,7 +9,11 @@ from astrbot.core.provider.entities import ProviderRequest
 from .constants import MEME_TOOL_NAME
 from .models import PluginPaths
 from .services.meme_manager import MemeManager
-from .services.render import StickerRenderer
+from .services.render import (
+    StickerRenderer,
+    register_sticker_component,
+    unregister_sticker_component,
+)
 from .services.storage import MemeStorage
 from .tools.steal_meme import MemeIngestTool
 
@@ -18,7 +22,7 @@ from .tools.steal_meme import MemeIngestTool
     "astrbot_plugin_angel_smile",
     "OpenAI",
     "天使之笑：允许 LLM 在回答中插入表情包，并支持自动偷取表情包入库。",
-    "2.3.5",
+    "2.4.0",
 )
 class AngelSmilePlugin(Star):
     def __init__(self, context: Context, config: dict | None = None):
@@ -40,6 +44,10 @@ class AngelSmilePlugin(Star):
         self.renderer = StickerRenderer(storage=self.storage)
         self.manager = MemeManager(storage=self.storage)
 
+        # OneBot 表情样式发送（image 段 sub_type=1）需要把 StickerImage 登记进
+        # 框架的空消息校验表；登记失败就退回普通图片，不影响发图。
+        self._sticker_style_ready = register_sticker_component()
+
         self.context.provider_manager.llm_tools.remove_func(MEME_TOOL_NAME)
         self.meme_tool = MemeIngestTool(manager=self.manager)
         self.context.add_llm_tools(self.meme_tool)
@@ -60,6 +68,7 @@ class AngelSmilePlugin(Star):
 
     async def terminate(self):
         self.context.provider_manager.llm_tools.remove_func(self.meme_tool.name)
+        unregister_sticker_component()
         logger.info("AngelSmile: 插件已停止")
 
     @filter.on_llm_request()
@@ -94,10 +103,20 @@ class AngelSmilePlugin(Star):
     async def on_decorating_result(self, event: AstrMessageEvent):
         result = event.get_result()
         message_id = getattr(event, "message_id", "") or ""
+        # OneBot 平台按表情样式发送（image 段 sub_type=1），其它平台维持普通图片
+        sticker_style = (
+            self._sticker_style_ready and event.get_platform_name() == "aiocqhttp"
+        )
         new_chain = []
         for item in result.chain:
             if isinstance(item, Plain):
-                new_chain.extend(await self.renderer.render_text(item.text, message_id=message_id))
+                new_chain.extend(
+                    await self.renderer.render_text(
+                        item.text,
+                        message_id=message_id,
+                        sticker_style=sticker_style,
+                    )
+                )
             else:
                 new_chain.append(item)
         result.chain = new_chain
