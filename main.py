@@ -22,7 +22,7 @@ from .tools.steal_meme import MemeIngestTool
     "astrbot_plugin_angel_smile",
     "OpenAI",
     "天使之笑：允许 LLM 在回答中插入表情包，并支持自动偷取表情包入库。",
-    "2.4.0",
+    "2.4.1",
 )
 class AngelSmilePlugin(Star):
     def __init__(self, context: Context, config: dict | None = None):
@@ -102,7 +102,6 @@ class AngelSmilePlugin(Star):
     @filter.on_decorating_result()
     async def on_decorating_result(self, event: AstrMessageEvent):
         result = event.get_result()
-        message_id = getattr(event, "message_id", "") or ""
         # OneBot 平台按表情样式发送（image 段 sub_type=1），其它平台维持普通图片
         sticker_style = (
             self._sticker_style_ready and event.get_platform_name() == "aiocqhttp"
@@ -113,7 +112,6 @@ class AngelSmilePlugin(Star):
                 new_chain.extend(
                     await self.renderer.render_text(
                         item.text,
-                        message_id=message_id,
                         sticker_style=sticker_style,
                     )
                 )

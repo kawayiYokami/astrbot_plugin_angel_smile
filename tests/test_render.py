@@ -52,16 +52,19 @@ class RenderTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(components[2], Plain)
         self.assertEqual(components[2].text, " 世界")
 
-    async def test_stable_select_deterministic(self):
-        """Same message_id + meme_name + token_index always picks same variant."""
+    async def test_multi_variant_sticker_picks_from_variants(self):
+        """多变体贴纸随机取其中一张，多次渲染应覆盖到不同变体。"""
         renderer = StickerRenderer(storage=_FakeStorage())
-        text = "看看 :无语:"
+        variants = {str(p) for p in _FakeStorage()._index["无语"]}
 
-        components1 = await renderer.render_text(text, message_id="msg123")
-        components2 = await renderer.render_text(text, message_id="msg123")
+        picked = set()
+        for _ in range(100):
+            components = await renderer.render_text("看看 :无语:")
+            self.assertEqual(len(components), 2)
+            self.assertIn(components[1].path, variants)
+            picked.add(components[1].path)
 
-        # Both should pick the same variant
-        self.assertEqual(components1[1].path, components2[1].path)
+        self.assertEqual(picked, variants)
 
     async def test_sticker_style_emits_sub_type_one(self):
         """OneBot 平台下贴纸走 image 段 sub_type=1，原样透传给协议端。"""

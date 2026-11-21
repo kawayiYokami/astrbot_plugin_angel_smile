@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import random
 import re
 from pathlib import Path
 from typing import List
@@ -13,8 +14,6 @@ from astrbot.core.message.components import (
     Image,
     Plain,
 )
-
-from ..utils import stable_select
 
 
 class StickerImage(BaseMessageComponent):
@@ -133,11 +132,9 @@ class StickerRenderer:
         return StickerImage(file=f"base64://{base64.b64encode(raw).decode()}")
 
     async def render_text(
-        self, text: str, message_id: str = "", sticker_style: bool = False
+        self, text: str, sticker_style: bool = False
     ) -> List:
         """Replace :meme_name: tokens with Image components.
-
-        Uses stable_select for deterministic variant choice.
 
         Args:
             sticker_style: True 时贴纸按 OneBot 表情样式发送（仅 aiocqhttp
@@ -153,7 +150,6 @@ class StickerRenderer:
             names = sorted((re.escape(name) for name in index), key=len, reverse=True)
             pattern = re.compile(r":(" + "|".join(names) + r"):")
             last_end = 0
-            token_counter = 0
 
             for match in pattern.finditer(text):
                 if match.start() > last_end:
@@ -162,12 +158,11 @@ class StickerRenderer:
                 meme_name = match.group(1)
                 variants = index.get(meme_name, [])
                 if variants:
-                    selected = stable_select(variants, message_id, meme_name, token_counter)
+                    selected = random.choice(variants)
                     components.append(await self._build_image(selected, sticker_style))
                 else:
                     components.append(Plain(match.group(0)))
 
-                token_counter += 1
                 last_end = match.end()
 
             if last_end < len(text):

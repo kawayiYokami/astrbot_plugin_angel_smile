@@ -47,20 +47,6 @@ def is_valid_meme_name(name: str) -> bool:
     return True
 
 
-def stable_select(variants: list[Path], message_id: str, meme_name: str, token_index: int) -> Path:
-    """Deterministically select a variant based on message context.
-
-    Uses a simple hash of (message_id, meme_name, token_index) to pick
-    a stable variant from the list, so the same message always renders
-    the same image.
-    """
-    if len(variants) == 1:
-        return variants[0]
-    key = f"{message_id}:{meme_name}:{token_index}"
-    idx = hash(key) % len(variants)
-    return variants[idx]
-
-
 # --- Image format detection ---
 
 def _is_png(buf: bytes) -> bool:
