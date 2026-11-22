@@ -106,6 +106,35 @@ class RenderTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(components[0], Image)
         self.assertNotIsInstance(components[0], StickerImage)
 
+    async def test_wrapped_sticker_symbols_are_stripped(self):
+        """LLM 套在贴纸外的成对符号随贴纸一起剥掉，不留残骸。"""
+        renderer = StickerRenderer(storage=_FakeStorage())
+
+        for text in ("[:坏笑:]", "【:坏笑:】", "（:坏笑:）", "(:坏笑:)", "「:坏笑:」", "“:坏笑:”"):
+            components = await renderer.render_text(text)
+            self.assertEqual(len(components), 1, f"残留符号: {text} -> {components}")
+            self.assertIsInstance(components[0], Image)
+
+    async def test_wrapped_sticker_keeps_following_text(self):
+        """剥掉外框后，正文原样保留。"""
+        renderer = StickerRenderer(storage=_FakeStorage())
+
+        components = await renderer.render_text("[:坏笑:] 一张图几百上千token")
+
+        self.assertEqual(len(components), 2)
+        self.assertIsInstance(components[0], Image)
+        self.assertEqual(components[1].text, " 一张图几百上千token")
+
+    async def test_unpaired_wrapper_is_kept(self):
+        """只有一侧括号时不剥，避免吞掉正文符号。"""
+        renderer = StickerRenderer(storage=_FakeStorage())
+
+        components = await renderer.render_text("[:坏笑:")
+
+        self.assertEqual(len(components), 2)
+        self.assertEqual(components[0].text, "[")
+        self.assertIsInstance(components[1], Image)
+
     async def test_prompt_injection_lists_names(self):
         renderer = StickerRenderer(storage=_FakeStorage())
         prompt = renderer.build_prompt_injection()

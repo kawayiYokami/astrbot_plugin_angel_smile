@@ -73,6 +73,32 @@ def unregister_sticker_component() -> None:
         pass
 
 
+# 贴纸标记两侧可能被 LLM 套上的包裹符号。只有成对出现才剥，单侧一律不动，
+# 避免误伤正文里本来就在用的括号。
+_WRAPPER_PAIRS = {
+    "[": "]",
+    "【": "】",
+    "（": "）",
+    "(": ")",
+    "「": "」",
+    "『": "』",
+    "“": "”",
+}
+
+
+def _expand_wrapper(text: str, start: int, end: int) -> tuple[int, int]:
+    """把紧贴贴纸标记的成对包裹符号一并纳入替换范围。
+
+    LLM 常写成 ``[:坏笑:]``、``【:坏笑:】`` 这类形式，只替换 ``:坏笑:``
+    会在消息里留下孤零零的括号。这里只在两侧确实成对时向外扩一格。
+    """
+    if start > 0 and end < len(text):
+        opener, closer = text[start - 1], text[end]
+        if _WRAPPER_PAIRS.get(opener) == closer:
+            return start - 1, end + 1
+    return start, end
+
+
 class StickerRenderer:
     def __init__(self, storage):
         self.storage = storage
@@ -152,18 +178,22 @@ class StickerRenderer:
             last_end = 0
 
             for match in pattern.finditer(text):
-                if match.start() > last_end:
-                    components.append(Plain(text[last_end:match.start()]))
-
                 meme_name = match.group(1)
                 variants = index.get(meme_name, [])
+                start, end = match.start(), match.end()
+                if variants:
+                    start, end = _expand_wrapper(text, start, end)
+
+                if start > last_end:
+                    components.append(Plain(text[last_end:start]))
+
                 if variants:
                     selected = random.choice(variants)
                     components.append(await self._build_image(selected, sticker_style))
                 else:
                     components.append(Plain(match.group(0)))
 
-                last_end = match.end()
+                last_end = end
 
             if last_end < len(text):
                 components.append(Plain(text[last_end:]))
