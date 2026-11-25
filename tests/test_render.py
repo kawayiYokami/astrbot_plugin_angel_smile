@@ -154,5 +154,40 @@ class RenderTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn("没有可用 meme", prompt)
 
 
+class StripStickerTokensTestCase(unittest.TestCase):
+    """工具直发通道用的剥离：只删表情库里真实存在的标记。"""
+
+    def test_removes_known_token(self):
+        renderer = StickerRenderer(storage=_FakeStorage())
+
+        self.assertEqual(renderer.strip_sticker_tokens("好耶 :坏笑: 走吧"), "好耶  走吧")
+
+    def test_removes_token_with_paired_wrapper(self):
+        renderer = StickerRenderer(storage=_FakeStorage())
+
+        self.assertEqual(renderer.strip_sticker_tokens("好耶（:坏笑:）"), "好耶")
+
+    def test_keeps_unknown_token(self):
+        renderer = StickerRenderer(storage=_FakeStorage())
+        text = "说明：:未知名字: 是普通文字"
+
+        self.assertEqual(renderer.strip_sticker_tokens(text), text)
+
+    def test_keeps_text_without_tokens(self):
+        renderer = StickerRenderer(storage=_FakeStorage())
+        text = "下次执行时间：2026-03-20 12:00:00"
+
+        self.assertEqual(renderer.strip_sticker_tokens(text), text)
+
+    def test_empty_index_keeps_text(self):
+        class EmptyStorage:
+            def scan_meme_index(self):
+                return {}
+
+        renderer = StickerRenderer(storage=EmptyStorage())
+
+        self.assertEqual(renderer.strip_sticker_tokens(":坏笑:"), ":坏笑:")
+
+
 if __name__ == "__main__":
     unittest.main()

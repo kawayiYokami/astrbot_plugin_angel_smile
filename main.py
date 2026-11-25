@@ -99,6 +99,36 @@ class AngelSmilePlugin(Star):
 """
         req.system_prompt = f"{req.system_prompt or ''}\n\n{instruction_prompt}"
 
+    @filter.on_using_llm_tool()
+    async def strip_stickers_in_tool_messages(
+        self, event: AstrMessageEvent, tool, tool_args, *args, **kwargs
+    ):
+        """`send_message_to_user` 不经过 decorating 钩子，这里补一次剥离。
+
+        工具直发的文本不会被渲染成贴纸，标记留着只会让群里出现 `:坏笑:` 这种
+        字面量。钩子拿到的 tool_args 就是随后展开执行的同一个 dict，就地改写生效。
+        """
+        try:
+            if getattr(tool, "name", "") != "send_message_to_user":
+                return
+
+            messages = (tool_args or {}).get("messages")
+            if not isinstance(messages, list):
+                return
+
+            for item in messages:
+                if not isinstance(item, dict) or item.get("type") != "plain":
+                    continue
+                text = item.get("text")
+                if not isinstance(text, str) or not text:
+                    continue
+                stripped = self.renderer.strip_sticker_tokens(text)
+                if stripped != text:
+                    logger.debug("AngelSmile: 工具直发文本剥离贴纸标记")
+                item["text"] = stripped
+        except Exception as e:
+            logger.warning(f"AngelSmile: 清理工具直发文本失败: {e}")
+
     @filter.on_decorating_result()
     async def on_decorating_result(self, event: AstrMessageEvent):
         result = event.get_result()

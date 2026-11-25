@@ -157,6 +157,40 @@ class StickerRenderer:
             return Image.fromFileSystem(str(path))
         return StickerImage(file=f"base64://{base64.b64encode(raw).decode()}")
 
+    @staticmethod
+    def _sticker_pattern(index) -> "re.Pattern | None":
+        """按表情库构造贴纸标记正则，名字长的优先匹配。"""
+        names = sorted((re.escape(name) for name in index), key=len, reverse=True)
+        return re.compile(r":(" + "|".join(names) + r"):")
+
+    def strip_sticker_tokens(self, text: str) -> str:
+        """剥掉文本里的贴纸标记，供不经过渲染的发送通道使用。
+
+        工具直发的文本不会被 `render_text` 处理，`:坏笑:` 留着只会原样显示成
+        文字；标记连着成对的包裹符号一起去掉。只认表情库里真实存在的名字，
+        未知的 `:xxx:` 当普通文字保留。
+        """
+        if not text:
+            return text
+        try:
+            index = self.storage.scan_meme_index()
+            if not index:
+                return text
+            pattern = self._sticker_pattern(index)
+            pieces = []
+            last_end = 0
+            for match in pattern.finditer(text):
+                start, end = _expand_wrapper(text, match.start(), match.end())
+                if start < last_end:
+                    continue
+                pieces.append(text[last_end:start])
+                last_end = end
+            pieces.append(text[last_end:])
+            return "".join(pieces)
+        except Exception as exc:  # 剥标记失败不该阻断发送
+            logger.warning(f"AngelSmile: 剥离贴纸标记失败: {exc}")
+            return text
+
     async def render_text(
         self, text: str, sticker_style: bool = False
     ) -> List:
@@ -173,8 +207,7 @@ class StickerRenderer:
                 return [Plain(text)]
 
             # Build regex matching only available meme names
-            names = sorted((re.escape(name) for name in index), key=len, reverse=True)
-            pattern = re.compile(r":(" + "|".join(names) + r"):")
+            pattern = self._sticker_pattern(index)
             last_end = 0
 
             for match in pattern.finditer(text):
