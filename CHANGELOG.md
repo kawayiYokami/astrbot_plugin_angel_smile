@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.3 - 2026-11-26
+
+### Fixed
+- 调用 `send_message_to_user` 发消息时，正文里的 `:坏笑:` 不会被渲染，而是一直显示成字面量。该工具不经过 `on_decorating_result`，贴纸渲染钩子无从介入；现在在 `on_using_llm_tool` 里把纯文本组件中的贴纸标记剥掉（连同成对的包裹符号），只认表情库里真实存在的名字，未知的 `:xxx:` 保持原样。`main.py`、`services/render.py`。
+
 ## 2.4.2 - 2026-11-22
 
 ### Fixed

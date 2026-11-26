@@ -22,7 +22,7 @@ from .tools.steal_meme import MemeIngestTool
     "astrbot_plugin_angel_smile",
     "OpenAI",
     "天使之笑：允许 LLM 在回答中插入表情包，并支持自动偷取表情包入库。",
-    "2.4.2",
+    "2.4.3",
 )
 class AngelSmilePlugin(Star):
     def __init__(self, context: Context, config: dict | None = None):
